@@ -1,0 +1,155 @@
+from ... import ui_icons
+from enum import Enum, auto
+
+__reload_order_index__ = -1
+
+shader_enum = [
+    ('0', "Diffuse", ""),
+    ('1', "Specular", ""),
+    ('2', "Metal", ""),
+    ('3', "Env", ""),
+    ('4', "Opaque", ""),
+    ('5', "EnvMetal", ""),
+    ('6', "TwoLayerDiffuse", ""),
+    ('7', "TwoLayerEnvMetal", ""),
+    ('8', "TwoLayerTerrain", ""),
+    ('9', "DiffuseEmissive", ""),
+    ('10', "waterWindow", ""),
+    ('11', "MaskedEnvMetal", ""),
+    ('12', "EnvMetalEmissive", ""),
+    ('13', "TwoLayerDiffuseOpaque", ""),
+    ('14', "submarineWindow", ""),
+    ('15', "TwoLayerDiffuseEmissive", ""),
+    ('16', "DiffuseTerrain", ""),
+    ('17', "AdditiveMaskedEnvMetal", ""),
+    ('18', "TwoLayerDiffuseMod2x", ""),
+    ('19', "TwoLayerDiffuseMod2xNA", ""),
+    ('20', "TwoLayerDiffuseAlpha", ""),
+    ('21', "MapObjLod", ""),
+    ('22', "MapObjParallax", "")
+]
+
+terrain_type_enum = [ # can be loaded from DBC. TODO: legion terrain types
+    ('0', "Dirt", ""), ('1', "Metallic", ""), ('2', "Stone", ""),
+    ('3', "Snow", ""), ('4', "Wood", ""), ('5', "Grass", ""),
+    ('6', "Leaves", ""), ('7', "Sand", ""), ('8', "Soggy", ""),
+    ('9', "Dusty Grass", ""), ('10', "None", ""), ('11', "Water", ""),
+    ('12', "Unknown", ""),('13', "Unknown", ""),
+]
+
+blending_enum = [
+    ('0', "Blend_Opaque", ""), ('1', "Blend_AlphaKey", ""), ('2', "Blend_Alpha", ""),
+    ('3', "Blend_Add", ""), ('4', "Blend_Mod", ""), ('5', "Blend_Mod2x", ""),
+    ('6', "Blend_ModAdd", ""), ('7', "Blend_InvSrcAlphaAdd", ""), ('8', "Blend_InvSrcAlphaOpaque", ""),
+    ('9', "Blend_SrcAlphaOpaque", ""), ('10', "Blend_NoAlphaAdd", ""), ('11', "Blend_ConstantAlpha", "")
+]
+
+material_flag_enum = [
+    ("1", "Unlit", "Disable lighting", 'SHADING_SOLID', 0x1),
+    ("2", "Unfogged", "Disable fog", 'MOD_FLUID', 0x2),
+    ("4", "Two-sided", "Render from both sides", 'MOD_UVPROJECT', 0x4),
+    ("8", "Exterior light", "Ignore local WMO lighting, use world lighting instead", 'LIGHT_SUN', 0x8),
+    ("16", "Night Glow", "Used for windows to glow at nighttime", ui_icons['MAT_NIGHT_GLOW'], 0x10),
+    ("32", "Window", "Unknown, used for windows", ui_icons['MAT_WINDOW'], 0x20),
+    ("64", "Clamp_S", "Force texture to use clamp _s adressing", 'DISCLOSURE_TRI_DOWN', 0x40),
+    ("128", "Clamp_T", "Force texture to use clamp _t adressing", 'TRIA_DOWN', 0x80)
+]
+
+group_flag_enum = [
+    ('0', "Vertex color", "Check if you need vertex color in this group", 'SHADING_RENDERED', 0x1),
+    ('1', "No local lighting", "Use world-defined lighting in a group", 'LIGHT', 0x2),
+    ('2', "Always draw", "Always draw the model. Disable portal-based geometry culling", 'SHAPEKEY_DATA', 0x4),
+    ('3', "Mounts allowed", "Allow mounts in this indoor group", 'MESH_MONKEY', 0x8),
+    ('4', "Use Skybox", "Display WMO skybox in this indoor group", 'SURFACE_NSPHERE', 0x10),
+    ('5', "Show exterior sky", "Show exterior sky in interior WMO group", 'MAT_SPHERE_SKY', 0x20)
+]
+
+place_type_enum = [
+    ('8', "Outdoor", "", 'OBJECT_DATA', 0),
+    ('8192', "Indoor", "", 'MOD_SUBSURF', 1)
+]
+
+liquid_type_enum = [
+    ('0', "No liquid", ""), ('1', "Water", ""), ('2', "Ocean", ""),
+    ('3', "Magma", ""), ('4', "Slime", ""), ('5', "Slow Water", ""),
+    ('6', "Slow Ocean", ""), ('7', "Slow Magma", ""), ('8', "Slow Slime", ""),
+    ('9', "Fast Water", ""), ('10', "Fast Ocean", ""), ('11', "Fast Magma", ""),
+    ('12', "Fast Slime", ""), ('13', "WMO Water", ""), ('14', "WMO Ocean", ""),
+    ('15', "Green Lava", ""), ('17', "WMO Water - Interior", ""), ('19', "WMO Magma", ""),
+    ('20', "WMO Slime", ""), ('21', "Naxxramas - Slime", ""), ('41', "Coilfang Raid - Water", ""),
+    ('61', "Hyjal Past - Water", ""), ('81', "Lake Wintergrasp - Water", ""), ('100', "Basic Procedural Water", ""),
+    ('121', "CoA Black - Magma", ""), ('141', "Chamber Magma", ""), ('181', "Orange Slime", "")
+]
+
+portal_dir_alg_enum = [
+    ("0", "Auto", "", 'MONKEY', 0),
+    ("1", "Positive", "", 'ADD', 1),
+    ("2", "Negative", "", 'REMOVE', 2)
+]
+
+portal_detail_enum = [
+    ("0", "None", ""),
+    ("1", "First", ""),
+    ("2", "Second", "")
+]
+
+root_flags_enum = [
+    ("0", "No Auto Attenuation", "Do not attenuate light on vertices based on distance from portal", 'NODE_TEXTURE', 0x1),
+    ("1", "Do Not Use Lightmap", "", 'LIGHT_SUN', 0x2),
+    ("2", "Unified rendering", "Use ambient lighting inside indoor groups", 'OUTLINER_OB_LIGHT', 0x4),
+    # ("3", "Use real Liquid Type", "Use real liquid type ID from DBCs instead of local one.\nDisabling this might result in filling the WMO with water.", 'MOD_OCEAN', 0x8)
+]
+
+light_type_enum = [
+    ('0', "Omni", ""), ('1', "Spot", ""),
+    ('2', "Direct", ""), ('3', "Ambient", "")
+]
+
+
+class SpecialCollections(Enum):
+    """
+    Represents names of collections that have special meaning within the addon.
+    """
+
+    Outdoor = auto()
+    """ Collection used to store outdoor WMO groups. """
+
+    Indoor = auto()
+    """ Collection used to store indor WMO groups. """
+
+    Lights = auto()
+    """ Collection used to store lights. """
+
+    Fogs = auto()
+    """ Collection used to store fogs. """
+
+    Liquids = auto()
+    """ Collection used to store liquids such as water or lava. """
+
+    Portals = auto()
+    """ Collection used to store portal planes. """
+
+    Doodads = auto()
+    """ Collection used to store doodad sets (collections of doodads). """
+
+    Collision = auto()
+    """ Collection used to store WoW coliision. """
+
+
+class SpecialColorLayers(Enum):
+    """
+    Represents vertex color layer names that have special meaning within the addon.
+    """
+
+    Lightmap = auto()
+    """ Color representing the lightmap (blending of exterior and interior lighting). """
+
+    BatchmapInt = auto()
+    """ Color layer representing markup of batch types for interior batches. """
+
+    BatchmapTrans = auto()
+    """ Color layer representing markup of batch types for transitional batches. (priority over BatchmapInt). """
+
+    Blendmap = auto()
+    """ Color layer representing blending mask for materials that use multiple textures. """
+

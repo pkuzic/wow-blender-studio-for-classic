@@ -1,0 +1,121 @@
+from ....ui.panels import WBS_PT_object_properties_common
+from ....ui.enums import WoWSceneTypes
+from ..custom_objects import WoWWMOFog
+
+
+import bpy
+
+
+class WMO_PT_fog(WBS_PT_object_properties_common, bpy.types.Panel):
+    bl_label = "WMO Fog"
+    bl_context = "object"
+
+    __wbs_custom_object_type__ = WoWWMOFog
+    __wbs_scene_type__ = WoWSceneTypes.WMO
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+
+        self.layout.prop(context.object.wow_wmo_fog, "ignore_radius")
+        self.layout.prop(context.object.wow_wmo_fog, "unknown")
+        self.layout.prop(context.object.wow_wmo_fog, "inner_radius")
+        self.layout.prop(context.object.wow_wmo_fog, "end_dist")
+        self.layout.prop(context.object.wow_wmo_fog, "start_factor")
+        self.layout.prop(context.object.wow_wmo_fog, "color1")
+        self.layout.prop(context.object.wow_wmo_fog, "end_dist2")
+        self.layout.prop(context.object.wow_wmo_fog, "start_factor2")
+        self.layout.prop(context.object.wow_wmo_fog, "color2")
+
+
+def update_fog_color(self, context):
+    fog = self.id_data
+    fog.color = (self.color1[0], self.color1[1], self.color1[2], 0.5)
+
+
+class WowFogPropertyGroup(bpy.types.PropertyGroup):
+
+    enabled:  bpy.props.BoolProperty()
+
+    fog_id:  bpy.props.IntProperty(
+        name="WMO Group ID",
+        description="Used internally for exporting",
+        default=0,
+    )
+
+    ignore_radius:  bpy.props.BoolProperty(
+        name="Ignore Radius",
+        description="Ignore radius in CWorldView::QueryCameraFog",
+        default=False
+    )
+
+    unknown:  bpy.props.BoolProperty(
+        name="Unknown Flag",
+        description="Check that in if you know what it is",
+        default=False
+    )
+
+    inner_radius:  bpy.props.FloatProperty(
+        name="Inner Radius (%)",
+        description="A radius of fog starting to fade",
+        default=100.0,
+        min=0.0,
+        max=100.0
+    )
+
+    end_dist:  bpy.props.FloatProperty(
+        name="Farclip",
+        description="Fog farclip",
+        default=70.0,
+        min=0.0,
+        max=2048.0
+    )
+
+    start_factor:  bpy.props.FloatProperty(
+        name="Nearclip",
+        description="Fog nearclip",
+        default=0.1,
+        min=0.0,
+        max=1.0
+    )
+
+    color1:  bpy.props.FloatVectorProperty(
+        name="Color",
+        subtype='COLOR',
+        default=(1, 1, 1),
+        min=0.0,
+        max=1.0,
+        update=update_fog_color
+    )
+
+    end_dist2:  bpy.props.FloatProperty(
+        name="Underwater farclip",
+        description="Underwater fog farclip",
+        default=70.0,
+        min=0.0,
+        max=250.0
+    )
+
+    start_factor2:  bpy.props.FloatProperty(
+        name="Underwater nearclip",
+        description="Underwater fog nearclip",
+        default=0.1,
+        min=0.0,
+        max=1.0
+    )
+
+    color2:  bpy.props.FloatVectorProperty(
+        name="Underwater Color",
+        subtype='COLOR',
+        default=(1, 1, 1),
+        min=0.0,
+        max=1.0
+    )
+
+
+def register():
+    bpy.types.Object.wow_wmo_fog = bpy.props.PointerProperty(type=WowFogPropertyGroup)
+
+
+def unregister():
+    del bpy.types.Object.wow_wmo_fog

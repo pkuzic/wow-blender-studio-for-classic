@@ -1,0 +1,35 @@
+Metadata-Version: 2.1
+Name: require-python-3
+Version: 1
+Summary: Makes your script require python 3
+Home-page: https://github.com/asperous/require-python-3
+Author: Andrew Chase
+Author-email: theandychase@gmail.com
+License: MIT
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 3
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Utilities
+
+require-python-3 contains this code:
+
+	if sys.version_info[0] != 3:  
+	    print("This script requires Python 3")  
+	    exit()
+
+
+## How to use
+
+### Install package
+
+Either:
+
+1. Add ``require-python-3`` to your ``requirements.txt`` file and run ``pip3 install -r requirements.txt``
+2. Or run directly: ``pip3 install require-python-3``
+3. Or download [``require_python_3.py``](https://raw.githubusercontent.com/asperous/require-python-3/master/require_python_3.py) directly and put it next to your script sources
+
+### Include model
+
+Add ``import require_python_3`` to your scripts that require python 3.

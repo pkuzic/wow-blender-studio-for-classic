@@ -1,0 +1,15 @@
+# Python bytecode / caches
+__pycache__/
+*.pyc
+*.pyo
+
+# Blender backups
+*.blend1
+*.blend2
+
+# Retail-only data, NOT needed for Classic (1.12) work — excluded to keep the repo lean.
+# Re-add these if you want retail CASC / DBD (DB2) features:
+#   - pywowlib/archives/listfile.csv : 77 MB community CASC listfile (retail filename map)
+#   - pywowlib/wdbx/dbd/             : DBDefs submodule (retail DB2 definitions)
+pywowlib/archives/listfile.csv
+pywowlib/wdbx/dbd/

@@ -1,0 +1,829 @@
+import os
+import struct
+
+from typing import List
+from itertools import chain
+from collections import deque
+
+from .enums.m2_enums import M2TextureTypes
+from .file_formats import m2_chunks
+from .file_formats.m2_format import *
+from .file_formats.m2_chunks import *
+from .file_formats.skin_format import M2SkinProfile, M2SkinSubmesh, M2SkinTextureUnit
+from .file_formats.skel_format import SkelFile
+from .file_formats.anim_format import AnimFile
+from .file_formats.wow_common_types import M2Versions, M2VersionsManager
+
+
+class M2Dependencies:
+
+    def __init__(self):
+        self.textures = []
+        self.skins = []
+        self.anims = {}
+        self.bones = []
+        self.lod_skins = []
+
+
+class M2File:
+    def __init__(self, version, filepath=None):
+        self.version = M2Versions.from_expansion_number(version)
+        # Make every format object built from here on (incl. MD20 and its lazily
+        # constructed bones/tracks) use the right layout. The singleton otherwise
+        # defaults to WotLK, which mis-parses vanilla (v256) bone tracks.
+        M2VersionsManager().set_m2_version(self.version)
+        self.root = MD21() if self.version >= M2Versions.LEGION else MD20()
+        self.filepath = filepath
+
+        track_cache = M2TrackCache()
+        track_cache.purge()
+        
+        self.dependencies = M2Dependencies()
+        self.skins = [M2SkinProfile()]
+        self.skels = deque()
+        self.texture_path_map = {}
+
+        self.pfid = None
+        self.sfid = None
+        self.afid = None
+        self.bfid = None
+        self.txac = None
+        self.expt = None
+        self.exp2 = None
+        self.pabc = None
+        self.padc = None
+        self.psbc = None
+        self.pedc = None
+        self.skid = None
+        self.txid = None
+
+        if filepath:
+            self.raw_path = os.path.splitext(filepath)[0]
+            self.read()
+
+    def read(self):
+        self.skins = []
+
+        with open(self.filepath, 'rb') as f:
+            magic = f.read(4).decode('utf-8')
+
+            if magic == 'MD20':
+                self.root = MD20().read(f)
+            else:
+                self.root = MD21().read(f)
+
+                while True:
+                    try:
+                        magic = f.read(4).decode('utf-8')
+
+                    except EOFError:
+                        break
+
+                    except struct.error:
+                        break
+
+                    except UnicodeDecodeError:
+                        print('\nAttempted reading non-chunked data.')
+                        break
+
+                    if not magic:
+                        break
+
+                    # getting the correct chunk parsing class
+                    chunk = getattr(m2_chunks, magic, None)
+
+                    # skipping unknown chunks
+                    if chunk is None:
+                        print("\nEncountered unknown chunk \"{}\"".format(magic))
+                        f.seek(M2ContentChunk().read(f).size, 1)
+                        continue
+
+                    if magic != 'SFID':
+                        setattr(self, magic.lower(), chunk().read(f))
+
+                    else:
+                        self.sfid = SFID(n_views=self.root.num_skin_profiles).read(f)
+
+    def find_main_skel(self) -> int:
+
+        if self.skid:
+            return self.skid.skeleton_file_id
+
+        return 0
+
+    def read_skel(self, path: str) -> int:
+
+        skel = SkelFile(path)
+
+        with open(path, 'rb') as f:
+            skel.read(f)
+
+        self.skels.appendleft(skel)
+
+        if skel.skpd:
+            return skel.skpd.parent_skel_file_id
+
+        return 0
+
+    def process_skels(self):
+
+        for skel in self.skels:
+
+            if skel.skl1:
+                self.root.name = skel.skl1.name
+
+            if skel.ska1:
+                self.root.attachments = skel.ska1.attachments
+                self.root.attachment_lookup_table = skel.ska1.attachment_lookup_table
+
+            if skel.skb1:
+                self.root.bones = skel.skb1.bones
+                self.root.key_bone_lookup = skel.skb1.key_bone_lookup
+
+            if skel.sks1:
+                self.root.global_sequences = skel.sks1.global_loops
+                self.root.sequences = skel.sks1.sequences
+                self.root.sequence_lookup = skel.sks1.sequence_lookups
+
+            if skel.afid:
+
+                if not self.afid:
+                    self.afid = AFID()
+
+                self.afid.anim_file_ids = skel.afid.anim_file_ids
+
+    def find_model_dependencies(self) -> M2Dependencies:
+
+        # find skins
+        if self.sfid:
+            self.dependencies.skins = [fdid for fdid in self.sfid.skin_file_data_ids]
+            self.dependencies.lod_skins = [fdid for fdid in self.sfid.lod_skin_file_data_ids]
+
+        elif self.version >= M2Versions.WOTLK:
+
+            # TODO : figure out if this is completely compatible with WOTLK
+            # if self.version >= M2Versions.WOD:
+            
+            self.dependencies.lod_skins = ["{}{}.skin".format(
+                self.raw_path, str(i + 1).zfill(2))  for i in range(2)]
+            self.dependencies.skins = ["{}{}.skin".format(
+                self.raw_path, str(i).zfill(2)) for i in range(self.root.num_skin_profiles)]
+
+        # find textures
+        for i, texture in enumerate(self.root.textures):
+
+            if texture.type != M2TextureTypes.NONE:
+                continue
+
+            if texture.filename.value:
+                self.dependencies.textures.append(texture.filename.value)
+
+            elif self.txid and i < len(self.txid.texture_ids) and self.txid.texture_ids[i] > 0:
+
+                texture.fdid = self.txid.texture_ids[i]
+                self.dependencies.textures.append(texture.fdid)
+
+        # find bones
+        if self.bfid:
+            self.dependencies.bones = [fdid for fdid in self.bfid.bone_file_data_ids]
+
+        elif self.version >= M2Versions.WOD:
+
+            for sequence in self.root.sequences:
+
+                if sequence.id == 808:
+                    self.dependencies.bones.append("{}_{}.bone".format(
+                        self.raw_path, str(sequence.variation_index).zfill(2)))
+
+        # TODO: find phys
+
+        # find anims
+        anim_paths_map = {}
+
+        normalized_path = os.path.normpath(self.raw_path)
+        path_parts = [part.lower() for part in normalized_path.split(os.sep)]
+        if "character" in path_parts:
+            base_path_index = path_parts.index("character")
+        elif "creature" in path_parts:
+            base_path_index = path_parts.index("creature")    
+        elif "world" in path_parts:
+            base_path_index = path_parts.index("world")    
+        else:
+            base_path_index = 0
+
+        relevant_path = "\\".join(path_parts[base_path_index:])
+
+        if not self.afid:
+            for i, sequence in enumerate(self.root.sequences):
+                # handle alias animations
+                real_anim = sequence
+                a_idx = i
+
+                while real_anim.flags & 0x40 and real_anim.alias_next != a_idx:
+                    a_idx = real_anim.alias_next
+                    real_anim = self.root.sequences[real_anim.alias_next]
+
+                if not sequence.flags & 0x130:
+                    anim_paths_map[real_anim.id, sequence.variation_index] \
+                        = "{}{}-{}.anim".format(relevant_path if not self.skels else self.skels[0].root_basepath
+                                                , str(real_anim.id).zfill(4)
+                                                , str(sequence.variation_index).zfill(2))
+
+        else:
+            for record in self.afid.anim_file_ids:
+
+                if not record.file_id:
+                    continue
+
+                anim_paths_map[record.anim_id, record.sub_anim_id] = record.file_id
+
+
+        self.dependencies.anims = anim_paths_map        
+        return self.dependencies
+
+    @staticmethod
+    def process_anim_file(raw_data : BytesIO, tracks: List[M2Track], real_seq_index: int):
+        
+        for track in tracks:
+            if track.global_sequence < 0 and track.timestamps.n_elements > real_seq_index:
+
+                timestamps = track.timestamps[real_seq_index]
+                timestamps.read(raw_data, ignore_header=True)
+
+                if track.creator is not M2Event:
+
+                    frame_values = track.values[real_seq_index]
+                    frame_values.read(raw_data, ignore_header=True)
+
+    def read_additional_files(self, skin_paths, anim_paths):
+
+        if self.version >= M2Versions.WOTLK:
+            # load skins
+
+            for i in range(self.root.num_skin_profiles):
+
+                try:
+                    with open(skin_paths[i], 'rb') as skin_file:
+                        self.skins.append(M2SkinProfile().read(skin_file))
+                except FileNotFoundError:
+                    if i > 0:
+                        raise FileNotFoundError('Error: at least one .skin file is required to load a model.')
+
+            # load anim files
+            track_cache = M2TrackCache()
+            for i, sequence in enumerate(self.root.sequences):
+                # handle alias animations
+                real_anim = sequence
+                a_idx = i
+
+                while real_anim.flags & 0x40 and real_anim.alias_next != a_idx:
+                    a_idx = real_anim.alias_next
+                    real_anim = self.root.sequences[real_anim.alias_next]
+
+                if not sequence.flags & 0x130:
+                    chunked_anim_files = self.version >= M2Versions.LEGION and self.root.global_flags & M2GlobalFlags.ChunkedAnimFiles
+
+                    anim_file = AnimFile(split=bool(self.skels)
+                                         , old=not bool(self.skels)
+                                                and not chunked_anim_files)
+                                                # downported models that don't clean up flags can crash and be detected as new version
+                                               # and not self.root.global_flags & M2GlobalFlags.ChunkedAnimFiles) 
+                    
+                    anim_path = anim_paths[real_anim.id, sequence.variation_index]
+
+                    try:
+                        if not os.path.exists(anim_path):
+                            raise FileNotFoundError(
+                                f"\nThe required .anim file \"{anim_path}\" was not found.\n"
+                                "Please, add the missing .anim file and try again."
+                            )
+
+                        with open(anim_path, 'rb') as f:
+                            # print(anim_path)
+                            
+                            anim_file.read(f)
+
+                    except FileNotFoundError as e:
+                        #import sys
+                        #sys.tracebacklimit = 0
+                        raise e
+
+                    if anim_file.old or not anim_file.split:
+
+                        if anim_file.old:
+                            raw_data = anim_file.raw_data
+                        else:
+                            raw_data = anim_file.afm2.raw_data
+
+                        for creator, tracks in track_cache.m2_tracks.items():
+
+                            M2File.process_anim_file(raw_data, tracks, a_idx)
+
+                    else:
+
+                        for creator, tracks in track_cache.m2_tracks.items():
+
+                            if creator == M2CompBone:
+                                M2File.process_anim_file(anim_file.afsb.raw_data, tracks, a_idx)
+                            elif creator == M2Attachment:
+                                M2File.process_anim_file(anim_file.afsa.raw_data, tracks, a_idx)
+                            else: #What's left in AFM2, seems like only Event data?
+                                M2File.process_anim_file(anim_file.afm2.raw_data, tracks, a_idx)
+
+        else:
+            self.skins = self.root.skin_profiles
+            self.normalize_classic_tracks()
+
+    def normalize_classic_tracks(self):
+        """Vanilla/TBC store every animation track as a single flat array of
+        absolute (global-timeline) timestamps + values; the keyframes for a
+        given sequence are the entries whose timestamp falls in that sequence's
+        [start, end] window. WotLK+ instead stores one nested sub-array per
+        sequence with 0-based local times. The Blender importer is written for
+        the WotLK layout, so here we rebuild the flat tracks into that nested
+        per-sequence form (local times) - after this, the importer is fully
+        version-agnostic."""
+        from .file_formats.wow_common_types import M2Array
+        from .io_utils.types import uint32
+
+        sequences = list(self.root.sequences)
+
+        def make_arr(items):
+            arr = M2Array(uint32)
+            arr.values = list(items)
+            arr.n_elements = len(arr.values)
+            return arr
+
+        for creator, tracks in M2TrackCache().m2_tracks.items():
+            for track in tracks:
+                has_values = hasattr(track, 'values')
+                flat_ts = list(track.timestamps.values) if track.timestamps.n_elements else []
+                flat_vals = list(track.values.values) if (has_values and track.values.n_elements) else []
+
+                if track.global_sequence >= 0:
+                    # already a single 0-based loop; keep as one slice at index 0
+                    ts_subs = [make_arr(flat_ts)]
+                    val_subs = [make_arr(flat_vals)] if has_values else None
+                else:
+                    ts_subs, val_subs = [], ([] if has_values else None)
+                    for seq in sequences:
+                        sel_ts, sel_vals = [], []
+                        for idx, t in enumerate(flat_ts):
+                            if seq.start_timestamp <= t <= seq.end_timestamp:
+                                sel_ts.append(t - seq.start_timestamp)
+                                if has_values and idx < len(flat_vals):
+                                    sel_vals.append(flat_vals[idx])
+                        # A value track with keyframes only OUTSIDE this sequence's
+                        # window is a constant for the sequence (e.g. a single t=0
+                        # opaque weight, or a non-moving bone). The client holds the
+                        # value at/just-before the window start, so emit one local
+                        # keyframe carrying it - otherwise constant tracks are lost.
+                        if has_values and not sel_ts and flat_ts:
+                            hold = 0
+                            for idx, t in enumerate(flat_ts):
+                                if t <= seq.start_timestamp:
+                                    hold = idx
+                                else:
+                                    break
+                            sel_ts = [0]
+                            sel_vals = [flat_vals[hold] if hold < len(flat_vals) else flat_vals[0]]
+                        ts_subs.append(make_arr(sel_ts))
+                        if has_values:
+                            val_subs.append(make_arr(sel_vals))
+
+                track.timestamps = make_arr(ts_subs)
+                if has_values:
+                    track.values = make_arr(val_subs)
+
+    def _assign_classic_sequence_times(self):
+        """Vanilla/TBC sequences share one timeline via start/end timestamps
+        (WotLK+ only stores a duration). Lay them out sequentially so each
+        sequence has a distinct, non-overlapping [start, end] window."""
+        t = 0
+        for seq in self.root.sequences:
+            dur = int(getattr(seq, 'duration', 0) or 0)
+            seq.start_timestamp = t
+            seq.end_timestamp = t + dur
+            t = seq.end_timestamp + 1000   # gap keeps windows distinct
+
+    def _collect_tracks(self):
+        """Walk the model graph and return every M2Track instance reachable
+        from root (bones, colors, weights, texture transforms, events, ...)."""
+        seen = set()
+        out = []
+
+        def walk(o, depth):
+            if depth > 8 or id(o) in seen:
+                return
+            seen.add(id(o))
+            if isinstance(o, M2TrackBase):
+                out.append(o)
+                return
+            vals = getattr(o, 'values', None)
+            if isinstance(vals, list) and hasattr(o, 'n_elements'):   # M2Array
+                for v in vals:
+                    walk(v, depth + 1)
+                return
+            d = getattr(o, '__dict__', None)
+            if d:
+                for v in d.values():
+                    walk(v, depth + 1)
+
+        walk(self.root, 0)
+        return out
+
+    def denormalize_classic_tracks(self):
+        """Inverse of normalize_classic_tracks: collapse the importer/exporter's
+        WotLK-style nested per-sequence tracks into vanilla's single flat array
+        of absolute (global-timeline) timestamps + values, and rebuild the
+        per-sequence interpolation_ranges."""
+        from .file_formats.wow_common_types import M2Array
+        from .io_utils.types import uint32, quat as quat_t
+
+        sequences = list(self.root.sequences)
+
+        def arr(type_, items):
+            a = M2Array(type_); a.values = list(items); a.n_elements = len(a.values); return a
+
+        def is_nested(track):
+            tv = track.timestamps.values
+            return bool(tv) and isinstance(tv[0], M2Array)
+
+        for track in self._collect_tracks():
+            if not is_nested(track):
+                continue
+            has_values = hasattr(track, 'values')
+            # NB: export-built arrays populate .values via add() but never set
+            # .n_elements (only read() does), so always size off len(...values).
+            ts_subs_all = track.timestamps.values
+            val_subs_all = track.values.values if has_values else []
+            val_type = val_subs_all[0].type if val_subs_all else uint32
+
+            flat_ts, flat_vals, ranges = [], [], []
+
+            if track.global_sequence >= 0:
+                sub_ts = ts_subs_all[0].values if ts_subs_all else []
+                sub_vals = val_subs_all[0].values if val_subs_all else []
+                flat_ts = [int(t) for t in sub_ts]
+                flat_vals = list(sub_vals)
+                ranges = []   # vanilla global-sequence tracks carry NO interpolation_ranges
+            else:
+                last_val = None
+                for i, seq in enumerate(sequences):
+                    sub_ts = ts_subs_all[i].values if i < len(ts_subs_all) else []
+                    sub_vals = val_subs_all[i].values if i < len(val_subs_all) else []
+                    off = len(flat_ts)
+                    if sub_ts:
+                        for t in sub_ts:
+                            flat_ts.append(int(t) + seq.start_timestamp)
+                        if has_values:
+                            flat_vals.extend(sub_vals)
+                            last_val = sub_vals[-1]
+                        ranges.append((off, off + len(sub_ts) - 1))
+                    elif has_values and last_val is not None:
+                        # hold last value across a sequence with no keyframes
+                        flat_ts.append(seq.start_timestamp)
+                        flat_vals.append(last_val)
+                        ranges.append((off, off))
+                    else:
+                        ranges.append((off, max(0, off - 1)))
+                # Vanilla always stores ONE trailing sentinel range (0,0): the
+                # client reads interpolation_ranges[seq+1] for the last sequence,
+                # so the array must have nseq+1 entries or it reads out of bounds
+                # (= the in-game ACCESS_VIOLATION on animation playback).
+                ranges.append((0, 0))
+
+            # compressed -> uncompressed quat, if a track still carries M2CompQuaternion
+            if has_values and flat_vals and isinstance(flat_vals[0], M2CompQuaternion):
+                conv = []
+                for q in flat_vals:
+                    w, x, y, z = q.to_quaternion()
+                    conv.append((x, y, z, w))
+                flat_vals = conv
+                val_type = quat_t
+
+            ir = M2Array(M2Range)
+            ir.values = []
+            for lo, hi in ranges:
+                r = M2Range(); r.minimum = lo; r.maximum = hi; ir.values.append(r)
+            ir.n_elements = len(ir.values)
+
+            track.interpolation_ranges = ir
+            track.timestamps = arr(uint32, [int(t) for t in flat_ts])
+            if has_values:
+                track.values = arr(val_type, flat_vals)
+
+    def write(self, filepath):
+        with open(filepath, 'wb') as f:
+            if self.version < M2Versions.WOTLK:
+                self.root.skin_profiles.values = list(self.skins)   # embed views (no external .skin)
+                self.root.skin_profiles.n_elements = len(self.skins)
+                self.root.num_skin_profiles = len(self.skins)
+                self._assign_classic_sequence_times()
+                self.denormalize_classic_tracks()
+            else:
+                raw_path = os.path.splitext(filepath)[0]
+                for i, skin in enumerate(self.skins):
+                    with open("{}{}.skin".format(raw_path, str(i).zfill(2)), 'wb') as skin_file:
+                        skin.write(skin_file)
+
+            self.root.write(f)
+
+            actual_size = os.path.getsize(filepath)
+
+            f.seek(actual_size)
+
+            padding_needed = (16 - (actual_size % 16)) % 16
+
+            if padding_needed > 0:
+                f.write(b'\x00' * padding_needed)
+                
+            # TODO: anim, skel and phys
+
+    def add_skin(self):
+        skin = M2SkinProfile()
+        self.skins.append(skin)
+        return skin
+
+    def add_vertex(self, pos, normal, tex_coords, bone_weights, bone_indices, tex_coords2=None):
+        vertex = M2Vertex()
+        vertex.pos = tuple(pos)
+        vertex.normal = tuple(normal)
+        vertex.tex_coords = tuple(tex_coords)
+
+        # rigging information
+        vertex.bone_weights = bone_weights
+        vertex.bone_indices = bone_indices
+
+        skin = self.skins[0]
+
+        # handle optional properties
+        if tex_coords2:
+            vertex.tex_coords2 = tex_coords2
+
+        vertex_index = self.root.vertices.add(vertex)
+        skin.vertex_indices.append(vertex_index)
+        return vertex_index
+
+    def add_geoset(self, vertices, normals, uv, uv2, tris, b_indices, b_weights, origin, sort_pos, sort_radius, mesh_part_id):
+
+        submesh = M2SkinSubmesh()
+        skin = self.skins[0]
+
+        # get max bone influences per vertex
+        max_influences = 0
+        for b_index_set, b_weight_set in zip(b_indices, b_weights):
+            v_max_influences = 0
+            for b_index, b_weight in zip(b_index_set, b_weight_set):
+                if b_index != 0 or (b_index == 0 and b_weight != 0):
+                    v_max_influences += 1
+
+                if max_influences < v_max_influences:
+                    max_influences = v_max_influences
+
+        if max_influences == 0: # influences count must be at least 1
+            max_influences = 1
+        
+        # localize bone indices
+        unique_bone_ids = set(chain(*b_indices))
+
+        submesh.bone_combo_index = len(self.root.bone_lookup_table)
+        submesh.bone_count = len(unique_bone_ids)
+        submesh.bone_influences = max_influences
+
+        bone_lookup = {}
+        for bone_id in unique_bone_ids:
+            bone_lookup[bone_id] = self.root.bone_lookup_table.add(bone_id)-submesh.bone_combo_index
+
+        # todo: hackfix to update bone_count_max, need to figure out what this actually does
+        bone_count = len(bone_lookup)
+        if bone_count > skin.bone_count_max:
+            bone_count_max_values = [21,53,64,256]
+            for val in bone_count_max_values:
+                if val >= bone_count:
+                    skin.bone_count_max = val
+                    break
+
+        # add vertices
+        start_index = len(self.root.vertices)
+        for i, vertex_pos in enumerate(vertices):
+            local_b_indices = tuple([bone_lookup[idx] for idx in b_indices[i]])
+            args = [vertex_pos, normals[i], uv[i], b_weights[i], b_indices[i]]
+
+            if uv2:
+                args.append(uv2[i])
+
+            self.add_vertex(*args)
+
+            indices = skin.bone_indices.new()
+            indices.values = list(local_b_indices)
+
+        submesh.vertex_start = start_index
+        submesh.vertex_count = len(vertices)
+        submesh.center_position = tuple(origin)
+
+        if self.version >= M2Versions.TBC:
+            submesh.sort_ceter_position = tuple(sort_pos)
+            submesh.sort_radius = sort_radius
+
+        submesh.skin_section_id = mesh_part_id
+        submesh.index_start = len(skin.triangle_indices)
+        submesh.index_count = len(tris) * 3
+
+        # add triangles
+        for i, tri in enumerate(tris):
+            for idx in tri:
+                skin.triangle_indices.append(start_index + idx)
+
+        geoset_index = skin.submeshes.add(submesh)
+
+        return geoset_index
+
+    def add_material_to_geoset(self, geoset_id, render_flags, blending, flags, shader_id, texture_lookup_id, tex_1_mapping, tex_2_mapping, priority_plane, mat_layer, tex_count, color_id, transparency_id, transform_id):  # TODO: Add extra params & cata +
+        skin = self.skins[0]
+        tex_unit = M2SkinTextureUnit()
+        tex_unit.skin_section_index = geoset_id
+        #self.root.tex_unit_lookup_table.append(skin.texture_units.add(tex_unit))
+        #self.root.tex_unit_lookup_table.append(1)
+        skin.texture_units.add(tex_unit)
+        tex_unit.geoset_index = geoset_id
+        tex_unit.flags = flags
+        tex_unit.priority_plane = priority_plane
+        tex_unit.shader_id = shader_id
+        tex_unit.texture_count = tex_count
+        tex_unit.texture_combo_index = texture_lookup_id
+        tex_unit.material_layer = mat_layer
+        tex_unit.color_index = color_id
+        tex_unit.texture_weight_combo_index = transparency_id
+        tex_unit.texture_transform_combo_index = transform_id
+
+        # Materials need to be duplicated if they're being used by a different texture, else, we'll reuse materials to not repeat data, Blizz does too
+        for i, material in enumerate(self.root.materials):
+            if material.flags == render_flags and material.blending_mode == blending and material.texture_used == texture_lookup_id:
+                tex_unit.material_index = i
+                break
+        else:
+            m2_mat = M2Material()
+            m2_mat.flags = render_flags
+            m2_mat.blending_mode = blending
+            m2_mat.texture_used = texture_lookup_id
+            tex_unit.material_index = self.root.materials.add(m2_mat)
+
+        # check if texunitlookup already exists
+        tex_mapping_pair = (tex_1_mapping, tex_2_mapping)
+        for i, existing_mapping_pair in enumerate(zip(self.root.tex_unit_lookup_table[::2], self.root.tex_unit_lookup_table[1::2])):
+            if existing_mapping_pair == tex_mapping_pair:
+                tex_unit.texture_coord_combo_index = i * 2
+                break
+        else:
+            # If the tex_mapping_pair is not in the lookup table, append it as a pair of two values
+            self.root.tex_unit_lookup_table.append(tex_1_mapping)
+            self.root.tex_unit_lookup_table.append(tex_2_mapping)
+            tex_unit.texture_coord_combo_index = len(self.root.tex_unit_lookup_table) - 2
+
+    def add_texture(self, path, flags, tex_type):
+
+        # check if this texture was already added
+        for i, tex in enumerate(self.root.textures):
+            if tex.filename.value == path and tex.flags == flags and tex.type == tex_type:
+                return i
+
+        texture = M2Texture()
+        texture.filename.value = path
+        texture.flags = flags
+        texture.type = tex_type
+
+        tex_id = self.root.textures.add(texture)
+        self.root.replacable_texture_lookup.append(0)   # TODO: get back here
+
+        return tex_id
+    
+    def add_tex_lookup(self, texture1_lookup_id, texture2_lookup_id):
+
+        tex_lookup_pair = (texture1_lookup_id, texture2_lookup_id)
+        for i, existing_lookup_pair in enumerate(zip(self.root.texture_lookup_table[::2], self.root.texture_lookup_table[1::2])):
+            if existing_lookup_pair == tex_lookup_pair:
+                tex_lookup_id = i * 2
+                break
+        else:
+            # If the tex_lookup_pair is not in the lookup table, append it as a pair of two values
+            self.root.texture_lookup_table.append(texture1_lookup_id)
+            self.root.texture_lookup_table.append(texture2_lookup_id)
+            tex_lookup_id = len(self.root.texture_lookup_table) - 2
+       
+        return tex_lookup_id           
+
+    def add_bone(self, pivot, key_bone_id, flags, parent_bone,submesh_id = 0, bone_name_crc = 0):
+        m2_bone = M2CompBone()
+        m2_bone.key_bone_id = key_bone_id
+        m2_bone.flags = flags
+        m2_bone.parent_bone = parent_bone
+        m2_bone.pivot = tuple(pivot)
+        m2_bone.submesh_id = submesh_id
+        m2_bone.bone_name_crc = bone_name_crc
+        bone_id = self.root.bones.add(m2_bone)
+        if key_bone_id >= 0:
+            while len(self.root.key_bone_lookup) <= key_bone_id:
+                self.root.key_bone_lookup.append(-1)
+            self.root.key_bone_lookup.set_index(key_bone_id,bone_id)
+
+        return bone_id
+
+    def add_dummy_anim_set(self, origin):
+        self.add_bone(tuple(origin), -1, 0, -1)
+        self.add_anim(0, 0, (0, 888.77778), 0, 32, 32767, (0, 0), 150,
+                      ((self.root.bounding_box.min, self.root.bounding_box.max), self.root.bounding_sphere_radius),
+                      None, None
+                      )
+        self.root.bone_lookup_table.append(0)
+        self.root.transparency_lookup_table.add(len(self.root.texture_weights))
+        texture_weight = self.root.texture_weights.new()
+        if self.version >= M2Versions.WOTLK:
+            texture_weight.timestamps.new().add(0)
+            texture_weight.values.new().add(32767)
+        else:
+            pass
+            # TODO: pre-wotlk
+
+    def add_anim(self, a_id, var_id, frame_bounds, movespeed, flags, frequency, replay, bl_time, bounds, var_next=None, alias_next=None):
+        seq = M2Sequence()
+        seq_id = self.root.sequences.add(seq)
+        if var_id == 0:
+            while len(self.root.sequence_lookup) <= a_id:
+                self.root.sequence_lookup.append(0xffff)
+            self.root.sequence_lookup.set_index(a_id,seq_id)
+
+        # It is presumed that framerate is always 24 fps.
+        if self.version <= M2Versions.TBC:
+            seq.start_timestamp, seq.end_timestamp = int(frame_bounds[0] // 0.0266666), int(frame_bounds[1] // 0.0266666)
+        else:
+            seq.duration = int(round((frame_bounds[1] - frame_bounds[0]) / 0.0266666))
+
+        seq.id = a_id
+        seq.variation_index = var_id
+        seq.variation_next = var_next if var_next else -1
+        # seq.alias_next = alias_next if alias_next else seq_id
+        seq.alias_next = alias_next if flags & 64 else seq_id
+        seq.flags = flags
+        seq.frequency = frequency
+        seq.movespeed = movespeed
+        seq.replay.minimum, seq.replay.maximum = replay
+        seq.bounds.extent.min, seq.bounds.extent.max = bounds[0]
+        seq.bounds.radius = bounds[1]
+
+        if self.version <= M2Versions.WOD:
+            seq.blend_time = bl_time
+        else:
+            seq.blend_time_in, seq.blend_time_out = bl_time
+
+        return seq_id
+
+    def add_bone_track(self, bone_id, trans, rot, scale):
+        bone = self.root.bones[bone_id]
+
+        rot_ts = [int(frame // 0.0266666) for frame in rot[0]]
+        trans_ts = [int(frame // 0.0266666) for frame in trans[0]]
+        scale_ts = [int(frame // 0.0266666) for frame in scale[0]]
+
+        if self.version < M2Versions.WOTLK:
+            rot_quats = rot[1]
+
+            if self.version <= M2Versions.CLASSIC:
+                rot_quats = [(qtrn[1], qtrn[2], qtrn[3], qtrn[0]) for qtrn in rot[1]]
+
+            bone.rotation.interpolation_ranges.append(len(bone.rotation.timestamps), len(rot[0]) - 1)
+            bone.rotation.timestamps.extend(rot_ts)
+            bone.rotation.values.extend(rot_quats)
+
+            bone.translation.interpolation_ranges.append(len(bone.translation.timestamps), len(trans[0]) - 1)
+            bone.translation.timestamps.extend(trans_ts)
+            bone.translation.values.extend(trans[1])
+
+            bone.scale.interpolation_ranges.append(len(bone.scale.timestamps), len(rot[0]) - 1)
+            bone.scale.timestamps.extend(scale_ts)
+            bone.scale.values.extend(scale[1])
+
+        else:
+            bone.rotation.timestamps.new().from_iterable(rot_ts)
+            bone.rotation.values.new().from_iterable(rot[1])
+
+            bone.translation.timestamps.new().from_iterable(trans_ts)
+            bone.translation.values.new().from_iterable(trans[1])
+
+            bone.scale.timestamps.new().from_iterable(scale_ts)
+            bone.scale.values.new().from_iterable(scale[1])
+
+    def add_collision_mesh(self, vertices, faces, normals):
+
+        # add collision geometry
+        self.root.collision_vertices.extend(vertices)
+        for face in faces: self.root.collision_triangles.extend(face)
+        self.root.collision_normals.extend(normals)
+
+
+
+
+
+
+
+
