@@ -8,7 +8,8 @@ from ..pywowlib.file_formats.wmo_format_root import MOHDFlags, PortalRelation
 from ..pywowlib.file_formats.wmo_format_group import MOGPFlags, LiquidVertex, BSPPlaneType
 from ..pywowlib.wmo_file import WMOGroupFile
 from .bl_render import BlenderWMOObjectRenderFlags
-from ..pywowlib import WoWVersions
+from ..pywowlib import WoWVersions, WoWVersionManager
+from .classic_lint import ClassicLint
 from ..wbs_kernel.wmo_utils import CWMOGeometryBatcher, WMOGeometryBatcherMeshParams, LiquidExportParams
 from ..utils.colors import srgb_to_linear as linear
 from .ui.custom_objects import WoWWMOGroup
@@ -1174,6 +1175,17 @@ class BlenderWMOSceneGroup:
             self.wmo_group.mogp.flags |= MOGPFlags.Indoor
         else:
             raise Exception('\nThe group \"{}\" is not in a valid outdoor or indoor collection'.format(obj.name))
+
+        # Classic (1.12): the client's portal flood EARLY-OUTS on ALWAYSDRAW (0x10000)
+        # groups — an interior with this flag stays sealed even WITH portals, and it
+        # never seeds/propagates visibility. Verified by disassembly of the 5875 client.
+        # Strip it on Classic exports (it is a legitimate flag on later clients).
+        if WoWVersionManager().client_version < WoWVersions.WOTLK \
+                and (self.wmo_group.mogp.flags & MOGPFlags.AlwaysDraw):
+            self.wmo_group.mogp.flags &= ~MOGPFlags.AlwaysDraw
+            ClassicLint.warn("[1.12] Group '%s': 'Always draw' flag stripped — on 1.12 it disables "
+                            "portal traversal for the group (seals interiors even with portals)."
+                            % obj.name)
 
         if self.has_blending:
             self.wmo_group.mogp.flags |= MOGPFlags.HasTwoMOCV

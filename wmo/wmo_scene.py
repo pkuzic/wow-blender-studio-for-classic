@@ -23,8 +23,9 @@ from .ui.collections import get_wmo_collection, SpecialCollections, get_wmo_grou
 from ..utils.collections import get_current_wow_model_collection
 
 from ..pywowlib.file_formats.wmo_format_root import GroupInfo, PortalInfo, PortalRelation, Fog
+from ..pywowlib.file_formats.wmo_format_group import MOGPFlags
 from ..pywowlib.wmo_file import WMOFile
-from ..pywowlib import WoWVersions
+from ..pywowlib import WoWVersions, WoWVersionManager
 
 from ..third_party.tqdm import tqdm
 
@@ -572,7 +573,14 @@ class BlenderWMOScene:
         """ Add group info, then return offset of name and desc in a tuple """
         group_info = GroupInfo()
 
-        group_info.flags = flags  # 8
+        if WoWVersionManager().client_version < WoWVersions.WOTLK:
+            # Stock 1.12 WMOs store ONLY the Indoor/Outdoor classification in MOGI
+            # (verified across every Blizzard group inspected); the 1.12 client reads
+            # MOGI in its cull legs, so stray bits (e.g. ALWAYSDRAW 0x10000) leaking
+            # into MOGI break portal culling even when MOGP is correct.
+            group_info.flags = flags & (MOGPFlags.Outdoor | MOGPFlags.Indoor)
+        else:
+            group_info.flags = flags  # 8
         group_info.bounding_box_corner1 = [_ for _ in bounding_box[0]]
         group_info.bounding_box_corner2 = [_ for _ in bounding_box[1]]
         group_info.name_ofs = self.wmo.mogn.add_string(name)  # 0xFFFFFFFF
@@ -810,6 +818,10 @@ class BlenderWMOScene:
                 relation.group_index = self.export_group_ids[second.name] if first.name == group_obj.original.name \
                     else self.export_group_ids[first.name]
 
+                # NOTE: side may legitimately be 0 here for the FIRST relation of a
+                # portal — get_portal_direction repairs it retroactively when the
+                # second group processes the same portal. Genuine failures (both
+                # sides 0) are caught by ClassicLint.post_checks on the final MOPR.
                 relation.side = bl_group.get_portal_direction(portal_obj, group_obj.evaluated_get(depsgraph))
 
                 self.wmo.mopr.relations.append(relation)

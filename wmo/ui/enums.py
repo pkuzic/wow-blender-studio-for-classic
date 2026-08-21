@@ -58,7 +58,10 @@ material_flag_enum = [
 group_flag_enum = [
     ('0', "Vertex color", "Check if you need vertex color in this group", 'SHADING_RENDERED', 0x1),
     ('1', "No local lighting", "Use world-defined lighting in a group", 'LIGHT', 0x2),
-    ('2', "Always draw", "Always draw the model. Disable portal-based geometry culling", 'SHAPEKEY_DATA', 0x4),
+    ('2', "Always draw", "Always draw the model. Disable portal-based geometry culling.\n"
+                         "WARNING (Classic/1.12): on the 1.12 client this flag makes the portal flood "
+                         "skip the group entirely — an interior with it stays SEALED even with portals. "
+                         "It is automatically stripped on Classic exports", 'SHAPEKEY_DATA', 0x4),
     ('3', "Mounts allowed", "Allow mounts in this indoor group", 'MESH_MONKEY', 0x8),
     ('4', "Use Skybox", "Display WMO skybox in this indoor group", 'SURFACE_NSPHERE', 0x10),
     ('5', "Show exterior sky", "Show exterior sky in interior WMO group", 'MAT_SPHERE_SKY', 0x20)

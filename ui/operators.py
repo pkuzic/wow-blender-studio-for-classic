@@ -7,6 +7,7 @@ from bpy_extras.io_utils import ExportHelper
 
 from ..wmo.import_wmo import import_wmo_to_blender_scene
 from ..wmo.export_wmo import export_wmo_from_blender_scene
+from ..wmo.classic_lint import ClassicLint, ClassicLintError
 from ..m2.import_m2 import import_m2
 from ..m2.export_m2 import export_m2, create_m2
 from ..utils.misc import load_game_data
@@ -107,7 +108,15 @@ class WBS_OT_save_current_wmo(bpy.types.Operator):
             filepath = os.path.join(dir_path, filename)
 
             print("saving wmo to : " + filepath)
-            export_wmo_from_blender_scene(filepath, version, False, 'FULL')
+            try:
+                export_wmo_from_blender_scene(filepath, version, False, 'FULL')
+            except ClassicLintError as e:
+                self.report({'ERROR'}, str(e))
+                ClassicLint.show_popup()
+                return {'CANCELLED'}
+            for w in ClassicLint.warnings:
+                self.report({'WARNING'}, w)
+            ClassicLint.show_popup()
             return {'FINISHED'}
 
         self.report({'ERROR'}, 'Invalid scene type.')
@@ -243,7 +252,15 @@ class WBS_OT_wmo_export(bpy.types.Operator, ExportHelper):
 
             version = int(context.scene.wow_scene.version)
 
-            export_wmo_from_blender_scene(self.filepath, version, self.export_selected, self.export_method)
+            try:
+                export_wmo_from_blender_scene(self.filepath, version, self.export_selected, self.export_method)
+            except ClassicLintError as e:
+                self.report({'ERROR'}, str(e))
+                ClassicLint.show_popup()
+                return {'CANCELLED'}
+            for w in ClassicLint.warnings:
+                self.report({'WARNING'}, w)
+            ClassicLint.show_popup()
             return {'FINISHED'}
 
         self.report({'ERROR'}, 'Invalid scene type.')
