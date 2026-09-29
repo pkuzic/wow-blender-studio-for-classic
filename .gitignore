@@ -7,9 +7,15 @@ __pycache__/
 *.blend1
 *.blend2
 
-# Retail-only data, NOT needed for Classic (1.12) work — excluded to keep the repo lean.
-# Re-add these if you want retail CASC / DBD (DB2) features:
+# Retail-only data, excluded to keep the repo lean:
 #   - pywowlib/archives/listfile.csv : 77 MB community CASC listfile (retail filename map)
-#   - pywowlib/wdbx/dbd/             : DBDefs submodule (retail DB2 definitions)
 pywowlib/archives/listfile.csv
-pywowlib/wdbx/dbd/
+
+# pywowlib/wdbx/dbd/ is the WoWDBDefs checkout. dbd_wrapper.py reads
+# dbd/definitions/*.dbd to parse DBCs on import, so those ARE needed for Classic
+# work and must be committed. The rest (analytics/code/exedumper/schlumpf tooling,
+# README, and any *.bak) is not used at runtime — keep it ignored.
+pywowlib/wdbx/dbd/*
+!pywowlib/wdbx/dbd/definitions/
+pywowlib/wdbx/dbd/definitions/*
+!pywowlib/wdbx/dbd/definitions/*.dbd

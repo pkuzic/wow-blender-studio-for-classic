@@ -1,0 +1,16 @@
+COLUMNS
+int ID
+int<ChrRaces::ID> ChrRacesID?
+int Sex?
+int UICustomizationType?
+int Index?
+int<ChrCustomizationChoice::ID> ChrCustomizationChoiceID?
+
+LAYOUT B6793EBA
+BUILD 9.0.1.34081, 9.0.1.34098
+$noninline,id$ID<32>
+ChrRacesID<32>
+Sex<32>
+UICustomizationType<32>
+Index<32>
+ChrCustomizationChoiceID<32>

@@ -1,0 +1,10 @@
+COLUMNS
+int ID
+int<ChrModel::ID> ChrModelID
+int<ChrRaces::ID> ChrRacesID
+
+LAYOUT 07C5BAE4
+BUILD 9.0.1.34081, 9.0.1.34098
+$noninline,id$ID<32>
+ChrModelID<32>
+$noninline,relation$ChrRacesID<32>
