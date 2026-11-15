@@ -3325,8 +3325,11 @@ class BlenderM2Scene:
                   
                     if tex_combiner_data not in tex_combiner_materials:
                         tex_combiner_materials.append(tex_combiner_data)
-                        self.m2.root.texture_combiner_combos.append(tex_combiner_data[0])
-                        self.m2.root.texture_combiner_combos.append(tex_combiner_data[1])
+                        # texture_combiner_combos is WotLK+; v256 (Classic) root has no such field
+                        # and uses fixed per-batch shaders, so skip the combo table there.
+                        if hasattr(self.m2.root, 'texture_combiner_combos'):
+                            self.m2.root.texture_combiner_combos.append(tex_combiner_data[0])
+                            self.m2.root.texture_combiner_combos.append(tex_combiner_data[1])
                     
                     #print("tex_combiners_materials", tex_combiner_materials)
 

@@ -800,7 +800,7 @@ class M2Particle:
             self.tail_cell_track = FBlock(uint16)
         else:
             self.mid_point = 0.0                                  # Middle point in lifespan (0 to 1).
-            self.color_values = Array((Array << uint8, 4), 3)
+            self.color_values = Array(Array << (uint8, 4), 3)
             self.scale_values = Array(float32, 4)
             self.head_cell_begin = Array(uint16, 2)
             self.head_cell_end = Array(uint16, 2)
