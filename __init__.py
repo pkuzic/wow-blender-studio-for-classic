@@ -22,9 +22,9 @@
 bl_info = {
     "name": "WoW Blender Studio",
     "author": "Skarn",
-    "version": (1, 0, 3),
+    "version": (1, 1, 0),
     "blender": (3, 4, 0),
-    "description": "Import-Export WoW M2-WMO",
+    "description": "Import-Export WoW M2-WMO (Classic 1.12 fork, auto-updates from GitHub)",
     "category": "Import-Export"
 }
 
@@ -34,6 +34,16 @@ import traceback
 import bpy
 import bpy.utils.previews
 from bpy.props import StringProperty
+
+# Finish a staged update BEFORE anything imports the compiled modules (Windows locks loaded .pyd/.dll).
+from . import updater_apply
+try:
+    updater_apply.LAST_STATUS = updater_apply.apply_pending(os.path.dirname(os.path.abspath(__file__)))
+except Exception as _e:
+    updater_apply.LAST_STATUS = "WBS updater: apply failed - %s" % _e
+if updater_apply.LAST_STATUS:
+    print(updater_apply.LAST_STATUS)
+
 from . import auto_load
 
 PACKAGE_NAME = __package__

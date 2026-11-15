@@ -306,6 +306,25 @@ class WBS_AP_Preferences(bpy.types.AddonPreferences):
 
     active_project_index: bpy.props.IntProperty(default=0)
 
+    update_auto_check: bpy.props.BoolProperty(
+        name='Check for updates automatically',
+        description='A few seconds after Blender starts, ask GitHub whether a newer version of this add-on exists',
+        default=True
+    )
+
+    update_interval_days: bpy.props.IntProperty(
+        name='Check every (days)',
+        description='Minimum days between automatic checks (0 = every Blender start)',
+        default=1, min=0, max=30
+    )
+
+    update_custom_url: bpy.props.StringProperty(
+        name='Custom update URL',
+        description='Optional: URL of a JSON file {"version","url","notes","page"} on our own server. '
+                    'Empty = the latest GitHub release of pkuzic/wow-blender-studio-for-classic',
+        default=''
+    )
+
     def draw(self, context: bpy.types.Context):
         layout = self.layout
 
@@ -321,7 +340,13 @@ class WBS_AP_Preferences(bpy.types.AddonPreferences):
         col.operator("wbs.project_list_action", icon='TRIA_DOWN', text="").action = 'DOWN'
         col.separator()
 
-        if proj_prefs := get_project_preferences():
+        try:
+            proj_prefs = get_project_preferences()
+        except (UserWarning, IndexError):    # fresh install: no project yet - still draw the rest (Updates)
+            proj_prefs = None
+            layout.label(text='No project yet: click "Create project" and set the WoW path', icon='INFO')
+
+        if proj_prefs:
             col = layout.column(align=True)
             col.label(text='Project settings:', icon='SETTINGS')
             box = col.box()
@@ -359,4 +384,8 @@ class WBS_AP_Preferences(bpy.types.AddonPreferences):
             col = layout.column(align=True)
             col.label(text='M2 Quick Save Settings:', icon='SETTINGS')
             box = col.box()
-            box.prop(proj_prefs, 'merge_vertices', text='Merge Vertices')                
+            box.prop(proj_prefs, 'merge_vertices', text='Merge Vertices')
+
+        layout.separator()
+        from .updater import draw_prefs
+        draw_prefs(self, layout)                

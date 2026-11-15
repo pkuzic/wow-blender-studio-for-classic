@@ -56,6 +56,8 @@ class WBS_PT_wow_scene(bpy.types.Panel):
         col.prop(context.scene.wow_scene, 'type')
         col.prop(context.scene.wow_scene, 'game_path')
         col.prop(context.scene, 'wow_screen_3d', text='Main workspace')
+        from .updater import draw_notice
+        draw_notice(layout)
 
     @classmethod
     def poll(cls, context):

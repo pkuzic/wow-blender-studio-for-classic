@@ -19,3 +19,8 @@ pywowlib/wdbx/dbd/*
 !pywowlib/wdbx/dbd/definitions/
 pywowlib/wdbx/dbd/definitions/*
 !pywowlib/wdbx/dbd/definitions/*.dbd
+
+# Release zips built by tools/make_release.py
+dist/
+# Written by the updater on install (release builds only)
+wbs_manifest.txt

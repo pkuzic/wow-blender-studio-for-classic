@@ -13,6 +13,16 @@ A fork of WoW Blender Studio (`io_scene_wmo`) targeting the **vanilla 1.12 / Tur
 | **MOGI normalized** to the stock 1.12 subset (only the Indoor/Outdoor bit), like every Blizzard WMO | **MOGI нормализуется** до стокового вида 1.12 (только бит Indoor/Outdoor), как во всех WMO Blizzard |
 | **Export lint for 1.12** (`wmo/classic_lint.py`): aborts/warns on portal mistakes before the file is written (see below) | **Линт экспорта под 1.12** (`wmo/classic_lint.py`): ошибки/предупреждения по порталам ДО записи файла (см. ниже) |
 
+## Updates / Обновления
+
+| EN | RU |
+|---|---|
+| **Auto-update (v1.1.0+).** A few seconds after Blender starts (at most once a day) the add-on asks GitHub for the latest release of this fork. When a newer one exists you see **"Update available"** in the status bar, the *WoW Scene* panel and *Preferences > Add-ons > WoW Blender Studio > Updates*. | **Автообновление (v1.1.0+).** Через несколько секунд после запуска Blender (не чаще раза в день) аддон спрашивает GitHub о последнем релизе форка. Если есть новее — **«Update available»** появляется в строке состояния, в панели *WoW Scene* и в *Preferences > Add-ons > WoW Blender Studio > Updates*. |
+| **Download Update** fetches it; **restart Blender** to finish (Windows locks the add-on's compiled modules while Blender runs, so the files are swapped at the next start). Only changed files are written; your `listfile.csv` and other local files are kept. | **Download Update** скачивает его; **перезапустите Blender**, чтобы завершить (пока Blender работает, Windows блокирует скомпилированные модули аддона, поэтому файлы заменяются при следующем запуске). Пишутся только изменённые файлы; ваш `listfile.csv` и прочие локальные файлы сохраняются. |
+| Settings: *Check for updates automatically*, *Check every (days)* (0 = every start), *Custom update URL* (a JSON `{"version","url","notes","page"}` on our own server instead of GitHub). | Настройки: *Check for updates automatically*, *Check every (days)* (0 = при каждом запуске), *Custom update URL* (JSON `{"version","url","notes","page"}` на нашем сервере вместо GitHub). |
+| A **git checkout** of the add-on is updated with `git pull --ff-only` (refused while it has local edits). | **Git-копия** аддона обновляется через `git pull --ff-only` (отказ, если есть локальные правки). |
+| **Publishing a release (maintainers):** bump `bl_info["version"]`, run `py -3 tools/make_release.py`, then `gh release create v<X.Y.Z> dist/io_scene_wmo-v<X.Y.Z>.zip --title v<X.Y.Z> --notes "..."`. The tag must be newer than the installed version. | **Публикация релиза (для разработчиков):** поднять `bl_info["version"]`, запустить `py -3 tools/make_release.py`, затем `gh release create v<X.Y.Z> dist/io_scene_wmo-v<X.Y.Z>.zip --title v<X.Y.Z> --notes "..."`. Тег должен быть новее установленной версии. |
+
 ## The 1.12 sealed-interior problem / Проблема «запечатанного интерьера» в 1.12
 
 **EN:** The 1.12 client renders WMO interiors strictly through portals: standing inside a
