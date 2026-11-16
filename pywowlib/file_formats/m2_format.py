@@ -763,6 +763,7 @@ class M2Particle:
         else:
             self.blending_type = 0                              # A blending type for the particle. See Below
             self.emitter_type = 0                               # 1 - Plane (rectangle), 2 - Sphere, 3 - Spline, 4 - Bone
+            self.particle_color_index = 0                       # not stored before TBC; the Blender side reads it
 
         if self.m2_version >= M2Versions.CATA:
             self.multi_tex_param_x = fixed_point(uint8, 2, 5)
@@ -801,7 +802,7 @@ class M2Particle:
         else:
             self.mid_point = 0.0                                  # Middle point in lifespan (0 to 1).
             self.color_values = Array(Array << (uint8, 4), 3)
-            self.scale_values = Array(float32, 4)
+            self.scale_values = Array(float32, 3)                 # 3 floats (start/mid/end); 4 shifted every later field - measured: <= TBC emitter = 504 bytes
             self.head_cell_begin = Array(uint16, 2)
             self.head_cell_end = Array(uint16, 2)
             self.tiles = Array(int16, 4)                          # Indices into the tiles on the texture? Or tailCell maybe?
@@ -834,6 +835,38 @@ class M2Particle:
         if self.m2_version >= M2Versions.CATA:
             self.multi_texture_param0 = Array(Vector_2fp_6_9, 2)
             self.multi_texture_param1 = Array(Vector_2fp_6_9, 2)
+
+    def _classic_as_wotlk_fields(self):
+        """Everwood Classic fork: <= TBC emitters store colour / alpha / scale as 3 values (start, mid, end) at
+        lifetime points 0, mid_point, 1. The Blender importer reads the WotLK representation (FBlock curves over
+        normalized lifetime 0..32767 + the *_vary / spin fields), so fill those from the classic values. The
+        classic fields themselves are kept unchanged for writing."""
+        mid = min(max(float(self.mid_point or 0.5), 0.0), 1.0)
+        times = (0, int(round(mid * 32767)), 32767)
+        self.color_track = FBlock(vec3D)
+        self.alpha_track = FBlock(fixed16)
+        self.scale_track = FBlock(vec2D)
+        self.head_cell_track = FBlock(uint16)
+        self.tail_cell_track = FBlock(uint16)
+        colors = getattr(self.color_values, 'values', None) or []
+        scales = getattr(self.scale_values, 'values', None) or []
+        for k, t in enumerate(times):
+            c = colors[k] if k < len(colors) else None
+            bgra = list(getattr(c, 'values', c) or (255, 255, 255, 255))
+            b, g, r, a = (list(bgra) + [255, 255, 255, 255])[:4]
+            s = float(scales[k]) if k < len(scales) else 1.0
+            self.color_track.timestamps.add(t)
+            self.color_track.keys.add((float(r), float(g), float(b)))
+            self.alpha_track.timestamps.add(t)
+            self.alpha_track.keys.add(int(round(a / 255.0 * 0x7fff)))
+            self.scale_track.timestamps.add(t)
+            self.scale_track.keys.add((s, s))
+        self.life_span_vary = 0.0
+        self.emission_rate_vary = 0.0
+        self.scale_vary = (0.0, 0.0)
+        self.basespin = 0.0
+        self.base_spin_vary = 0.0
+        self.spin_vary = 0.0
 
     def read(self, f):
         self.particle_id = uint32.read(f)
@@ -893,10 +926,11 @@ class M2Particle:
             self.color_values.read(f)
             self.scale_values.read(f)
             self.head_cell_begin.read(f)
-            f.skip(2)
+            f.seek(2, 1)                                      # (was f.skip: no such method on files)
             self.head_cell_end.read(f)
-            f.skip(2)
+            f.seek(2, 1)                                      # (was f.skip: no such method on files)
             self.tiles.read(f)
+            self._classic_as_wotlk_fields()
 
         self.tail_length = float32.read(f)
         self.twinkle_speed = float32.read(f)
@@ -919,7 +953,7 @@ class M2Particle:
         self.follow_speed1 = float32.read(f)
         self.follow_scale1 = float32.read(f)
         self.follow_speed2 = float32.read(f)
-        self.follow_scale1 = float32.read(f)
+        self.follow_scale2 = float32.read(f)
         self.spline_points.read(f)
         self.enabled_in.read(f)
 
@@ -1026,7 +1060,7 @@ class M2Particle:
     
     @staticmethod
     def size():
-        return 476 if M2VersionsManager().m2_version >= M2Versions.WOTLK else 492    
+        return 476 if M2VersionsManager().m2_version >= M2Versions.WOTLK else 504     # <= TBC: 0x1F8, measured on 1.12 data
 
 
 #############################################################
@@ -1213,6 +1247,21 @@ class M2Event:
 ######                  M2 Header                      ######
 #############################################################
 
+def canonical_m2_version(raw):
+    """Map a raw MD20 version field to the M2Versions constant whose layout it uses."""
+    if raw <= 257:
+        return M2Versions.CLASSIC
+    if raw <= 263:
+        return M2Versions.TBC
+    if raw == 264:
+        return M2Versions.WOTLK
+    if raw <= 272:
+        return M2Versions.CATA
+    if raw == 273:
+        return M2Versions.WOD
+    return raw
+
+
 class M2Header:
 
     def __init__(self):
@@ -1283,7 +1332,11 @@ class M2Header:
     def read(self, f):
         self.version = uint32.read(f)
 
-        M2VersionsManager().set_m2_version(self.version)
+        # Everwood Classic fork: every layout gate compares against the canonical numbers (CLASSIC 256, TBC 263,
+        # WOTLK 264, CATA 272 ...). Publishing the RAW file number broke the in-between versions: v257 failed
+        # "<= CLASSIC" (vanilla quaternions read as compressed) and v260-262 failed ">= TBC" (bone name CRC
+        # skipped -> every later field misaligned, "unpack requires a buffer of 4 bytes").
+        M2VersionsManager().set_m2_version(canonical_m2_version(self.version))
 
         self.name.read(f)
         self.global_flags = uint32.read(f)

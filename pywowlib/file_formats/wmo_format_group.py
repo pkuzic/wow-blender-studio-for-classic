@@ -494,7 +494,7 @@ class MORB(ContentChunk):
         super().read(f)
         self.start_index = uint32.read(f)
         self.index_count = uint16.read(f)
-        f.skip(2)
+        f.seek(2, 1)                                      # (was f.skip: no such method on files)
 
         return self
 

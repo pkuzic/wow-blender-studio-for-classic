@@ -403,9 +403,9 @@ class BlenderM2Scene:
                 m2_mat_error_message = f"Material with index {tex_unit.material_index} not found in M2 file. This may indicate a corrupt M2 file."
                 raise IndexError(m2_mat_error_message) from None
 
-            if tex_unit.texture_count == 2 and '8' not in flags:
-                try: 
-                    m2_mat2 = self.m2.root.materials[tex_unit.material_index+1] 
+            if tex_unit.texture_count == 2 and ('8' not in flags or not hasattr(self.m2.root, 'texture_combiner_combos')):
+                try:
+                    m2_mat2 = self.m2.root.materials[tex_unit.material_index+1]
                 except IndexError as e:
                     print("\nMaterial for second texture not found, using first texture material:", e)
                     m2_mat2 = m2_mat
@@ -458,7 +458,9 @@ class BlenderM2Scene:
             t1_mapping = int_to_enum_mapping.get(self.m2.root.tex_unit_lookup_table[tex_unit.texture_coord_combo_index])
             texture_count = 2 if tex_unit.texture_count == 2  else 1
                 
-            if texture_count == 2 and '8' in flags: #M2 is using global flag for second material override
+            # Everwood Classic fork: <= TBC files have no texture_combiner_combos table even when global flag 0x8 is set
+            # (e.g. Legion models down-converted for 1.12) - they use the per-material blend mode like 1.12 draws them.
+            if texture_count == 2 and '8' in flags and hasattr(self.m2.root, 'texture_combiner_combos'): #M2 is using global flag for second material override
                 #print("Second material override flag is activated")
                 try:
                     t2_flags = parse_bitfield(self.m2.root.texture_combiner_combos[tex_unit.shader_id], 0x800)
@@ -473,7 +475,7 @@ class BlenderM2Scene:
                     except:
                         print('Second UVMap not found, using first one')
                         t2_mapping = int_to_enum_mapping.get(self.m2.root.tex_unit_lookup_table[tex_unit.texture_coord_combo_index])
-            elif texture_count == 2 and '8' not in flags:
+            elif texture_count == 2:
                     t2_flags = parse_bitfield(m2_mat2.flags, 0x800)  # render flags
                     t2_bl_mode = str(m2_mat2.blending_mode)
                     try: 
@@ -755,6 +757,9 @@ class BlenderM2Scene:
         anim_pair = seq.anim_pairs.add()
         anim_pair.type = 'OBJECT'
         anim_pair.object = self.rig
+        # the second add() may reallocate the collection: re-fetch the first item (dangling ref = native crash)
+        anim_pair_scene = seq.anim_pairs[len(seq.anim_pairs) - 2]
+        anim_pair = seq.anim_pairs[len(seq.anim_pairs) - 1]
 
         if not is_alias:
             action = bpy.data.actions.new(name='SC_{}'.format(name))
@@ -1669,6 +1674,9 @@ class BlenderM2Scene:
                 t_anim_pair = anim.anim_pairs.add()
                 t_anim_pair.type = 'OBJECT'
                 t_anim_pair.object = t_obj
+                # the second add() may reallocate the collection: re-fetch both (dangling ref = native crash)
+                c_anim_pair = anim.anim_pairs[len(anim.anim_pairs) - 2]
+                t_anim_pair = anim.anim_pairs[len(anim.anim_pairs) - 1]
 
                 name = '{}_UnkAnim'.format(str(j).zfill(3))
                 c_name = "CM{}".format(name)
@@ -1717,6 +1725,11 @@ class BlenderM2Scene:
                     t_anim_pair = anim.anim_pairs.add()
                     t_anim_pair.type = 'OBJECT'
                     t_anim_pair.object = t_obj
+
+                    # Everwood Classic fork: the second add() can reallocate the collection, leaving the first
+                    # item reference dangling (native EXCEPTION_ACCESS_VIOLATION in animate_camera_loc). Re-fetch.
+                    c_anim_pair = anim.anim_pairs[len(anim.anim_pairs) - 2]
+                    t_anim_pair = anim.anim_pairs[len(anim.anim_pairs) - 1]
 
                     field_name = anim_data_table.get_sequence_name(sequence.id)
                     name = '_{}_UnkAnim'.format(str(anim_index).zfill(3)) if not field_name \

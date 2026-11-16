@@ -26,7 +26,37 @@ class M2Dependencies:
 
 
 class M2File:
+    @staticmethod
+    def expansion_from_header(filepath):
+        """Everwood Classic fork: the expansion whose layout the FILE uses (MD20 version field), or None.
+        A 1.12 client's patches also carry TBC (v260-263) and WotLK (v264) models; parsing them with the scene's
+        client version ran the readers off the end of the file ("unpack requires a buffer of 4 bytes")."""
+        try:
+            with open(filepath, 'rb') as fh:
+                head = fh.read(8)
+        except (OSError, TypeError):
+            return None
+        if len(head) < 8 or head[:4] != b'MD20':
+            return None
+        ver = struct.unpack('<I', head[4:8])[0]
+        if ver <= 257:
+            return 0
+        if ver <= 263:
+            return 1
+        if ver == 264:
+            return 2
+        if ver <= 272:
+            return 3
+        if ver == 273:
+            return 5
+        return 6
+
     def __init__(self, version, filepath=None):
+        file_exp = self.expansion_from_header(filepath) if filepath else None
+        if file_exp is not None and file_exp != version:
+            print("\nM2 file layout is expansion {} (scene client version {}): parsing with the file's own layout."
+                  .format(file_exp, version))
+            version = file_exp
         self.version = M2Versions.from_expansion_number(version)
         # Make every format object built from here on (incl. MD20 and its lazily
         # constructed bones/tracks) use the right layout. The singleton otherwise

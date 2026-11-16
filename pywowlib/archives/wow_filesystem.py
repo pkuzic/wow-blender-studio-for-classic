@@ -275,6 +275,36 @@ class WoWFileData:
 
         return ret_path
 
+    # Everwood Classic fork: the 1.12 client's archive mount law (WoW.exe mounter 0x403740, mirrored by benilla's
+    # benilla-formats chain.rs): these ten base archives at fixed priority, then patch.MPQ, then every
+    # patch-?.MPQ whose ? is EXACTLY ONE character, ascending by case-folded name (so patch-{ / patch-} / patch-~
+    # sit above patch-Z), then speech2.MPQ. Nothing else is mounted. Plain alphabetical order (the old behaviour)
+    # put sound/speech/terrain/texture/wmo.MPQ ABOVE every patch, so patched files lost to stock ones.
+    VANILLA_BASE_ORDER = ('dbc.mpq', 'speech.mpq', 'fonts.mpq', 'interface.mpq', 'misc.mpq', 'sound.mpq',
+                          'wmo.mpq', 'terrain.mpq', 'texture.mpq', 'model.mpq')
+
+    @staticmethod
+    def vanilla_mount_order(path) -> List[Tuple[str, str]]:
+        """Ascending priority (last wins), as (normalized_path, real_path) like list_game_data_paths."""
+        names = sorted(os.listdir(path))
+        by_lower = {}
+        for n in names:
+            by_lower.setdefault(n.lower(), n)
+        order = [by_lower[b] for b in WoWFileData.VANILLA_BASE_ORDER if b in by_lower]
+        if 'patch.mpq' in by_lower:
+            order.append(by_lower['patch.mpq'])
+        patches = [n for n in names if n.lower().startswith('patch-') and n.lower().endswith('.mpq')
+                   and len(n) == len('patch-x.mpq')]
+        patches.sort(key=lambda n: n.lower())
+        order.extend(patches)
+        if 'speech2.mpq' in by_lower:
+            order.append(by_lower['speech2.mpq'])
+        out = []
+        for n in order:
+            real = os.path.join(path, n)
+            out.append((real.lower().strip(), real))
+        return out
+
     @staticmethod
     def list_game_data_paths(path) -> List[Tuple[str, str]]:
         """List files and directories in a directory that correspond to WoW patch naming rules."""
@@ -310,8 +340,8 @@ class WoWFileData:
             # Repackaged vanilla clients (e.g. Turtle WoW) keep everything in
             # top-level MPQs and ship no locale subfolder. That's fine - just
             # use the base data packages we already collected.
-            print("\nNo locale folder found; using top-level MPQs only.")
-            return dir_files
+            print("\nNo locale folder found: 1.12 mount order (as the game / benilla load it).")
+            return WoWFileData.vanilla_mount_order(path)
 
         locale_dir_files: List[Tuple[str, str]] = []
         for f in os.listdir(locale_path):

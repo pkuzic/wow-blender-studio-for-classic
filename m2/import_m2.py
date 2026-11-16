@@ -190,9 +190,18 @@ def import_m2_gamedata(version, filepath, is_local_file):
         n_skins = 0     # <= TBC: skin profiles are embedded in the .m2 (and 0x44 is the vertex array there)
 
     skin_paths = ["{}{}.skin".format(filepath[:-3], str(i).zfill(2)) for i in range(n_skins)]
-    game_data.extract_files(cache_dir, skin_paths)
+    extracted = game_data.extract_files(cache_dir, skin_paths)
+    missing = [p for p, r in zip(skin_paths, extracted) if not r or not os.path.getsize(r)]
+    if missing:
+        _remove_quietly(root_path)
+        for r in extracted:
+            if r:
+                _remove_quietly(r)
+        raise FileNotFoundError("this is a WotLK-format model (v{}) but its skin file {} is not in the client, so "
+                                "there is no geometry to import (the game cannot draw it either)"
+                                .format(m2_version, os.path.basename(missing[0])))
 
-    import_m2(version, root_path, is_local_file, time_import_method)    
+    import_m2(version, root_path, is_local_file, time_import_method)
 
     # clean up unnecessary files and directories
     _remove_quietly(root_path)

@@ -29,6 +29,8 @@ from ..utils import model_preview, blp_decode
 from .preferences import get_project_preferences
 
 MAX_RESULTS = 1000
+UNREADABLE_MSG = ('the archive lists this file but holds no data for it (a broken entry in the client, '
+                  'not a WBS problem) - nothing to show or import')
 PREVIEW_SIZE = 256
 TEXTURE_TYPE_NAMES = {
     0: 'Hardcoded', 1: 'Body skin', 2: 'Object / cape', 6: 'Hair', 8: 'Fur', 11: 'Creature skin 1',
@@ -341,8 +343,8 @@ def load_model(path):
     data = _read(game_data, path)
     if data is None and path.lower().endswith('.m2'):
         data = _read(game_data, path[:-3] + '.mdx')
-    if data is None:
-        raise FileNotFoundError(path)
+    if not data:
+        raise FileNotFoundError(UNREADABLE_MSG)
     reader = lambda p: _read(game_data, p)
     mesh = model_preview.read_m2(data, reader, path) if path.lower().endswith('.m2') \
         else model_preview.read_wmo(data, reader, path)
@@ -576,6 +578,9 @@ class WBS_OT_browser_import(bpy.types.Operator):
         path = st.current
         if not path:
             return {'CANCELLED'}
+        if not _read(load_game_data(), path):
+            self.report({'ERROR'}, 'WBS browser: ' + UNREADABLE_MSG)
+            return {'CANCELLED'}
         version = int(context.scene.wow_scene.version)
         try:
             if path.lower().endswith('.m2'):
@@ -619,7 +624,7 @@ class WBS_PT_model_browser(bpy.types.Panel):
         st = context.window_manager.wbs_browser
         if not INDEX['models']:
             layout.operator(WBS_OT_browser_index.bl_idname, icon='VIEWZOOM')
-            layout.label(text='Uses the WoW path of the active WBS project', icon='INFO')
+            layout.label(text='This window may freeze for a little while', icon='INFO')
             return
         row = layout.row(align=True)
         row.label(text='%d models, %d archives' % (len(INDEX['models']), len(INDEX['archives'])))
