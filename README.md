@@ -3,6 +3,9 @@
 A fork of WoW Blender Studio (`io_scene_wmo`) targeting the **vanilla 1.12 / Turtle** client.
 Форк WoW Blender Studio (`io_scene_wmo`) под **ванильный клиент 1.12 / Turtle**.
 
+> **Install / Установка:** download **`io_scene_wmo-vX.Y.Z.zip`** from [Releases](https://github.com/pkuzic/wow-blender-studio-for-classic/releases/latest) (under *Assets*), then Blender 3.4 → Edit → Preferences → Add-ons → Install. **Not** "Code → Download ZIP" / "Source code": that copy has no update manifest.
+> Скачайте **`io_scene_wmo-vX.Y.Z.zip`** со страницы [Releases](https://github.com/pkuzic/wow-blender-studio-for-classic/releases/latest) (раздел *Assets*), затем Blender 3.4 → Edit → Preferences → Add-ons → Install. **Не** «Code → Download ZIP» / «Source code»: в этой копии нет манифеста обновлений.
+
 ## Classic-specific fixes in this fork / Отличия форка
 
 | EN | RU |

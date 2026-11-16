@@ -295,7 +295,7 @@ class WBS_AP_Preferences(bpy.types.AddonPreferences):
     Stores global preferences for the addon.
     """
 
-    bl_idname = 'io_scene_wmo'
+    bl_idname = ADDON_MODULE_NAME      # must equal the add-on folder name
 
     projects: bpy.props.CollectionProperty(
         type=WBS_PG_ProjectPreferences,

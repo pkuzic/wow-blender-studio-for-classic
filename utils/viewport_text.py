@@ -22,11 +22,8 @@ class WBS_Viewport_Text_Display(bpy.types.Operator):
     def draw_callback_px(self, context, message, font_size, y_offset, color):
 
         
-        script_paths = bpy.utils.script_paths()
-        addons_path = os.path.join(script_paths[0], "addons")
-        addon_name = 'io_scene_wmo'
-        font_rel_path = os.path.join("fonts", "frizqt_ck.ttf")
-        font_path = os.path.join(addons_path, addon_name, font_rel_path)
+        addon_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # works for any folder name / location
+        font_path = os.path.join(addon_root, "fonts", "frizqt_ck.ttf")
         
         font_id = blf.load(font_path)
         blf.size(font_id, font_size, 72)

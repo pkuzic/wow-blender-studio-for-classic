@@ -19,12 +19,23 @@ class WoWFileData:
         self.files = self.init_mpq_storage(self.wow_path, project_path) \
             if WoWVersionManager().client_version < WoWVersions.WOD else self.init_casc_storage(self.wow_path,
                                                                                                 project_path)
+        if self.files is None:
+            raise UserWarning("WoW client path is empty or invalid: '{}'. In Preferences > Add-ons > WoW Blender Studio, "
+                              "set the project's WoW path to the client folder that contains the Data folder with the .mpq "
+                              "files.".format(wow_path))
 
         self.db_files_client = DBFilesClient(self)
         self.db_files_client.init_tables()
 
-        with open(os.path.join(os.path.dirname(__file__), 'listfile.csv'), newline='') as f:
-            self.listfile = {int(row[0]): row[1] for row in csv.reader(f, delimiter=';')}
+        # listfile.csv = the retail fileDataID -> path map (77 MB, not shipped in release zips). Classic MPQ data is
+        # addressed by path only, so a missing listfile just disables ID lookups instead of breaking every import.
+        self.listfile = {}
+        listfile_path = os.path.join(os.path.dirname(__file__), 'listfile.csv')
+        if os.path.isfile(listfile_path):
+            with open(listfile_path, newline='') as f:
+                self.listfile = {int(row[0]): row[1] for row in csv.reader(f, delimiter=';')}
+        else:
+            print("\nNo listfile.csv - fileDataID lookups disabled (not needed for Classic).")
 
     def __del__(self):
         print("\nUnloaded game data.")
@@ -322,6 +333,12 @@ class WoWFileData:
         """Check if a given path is a path to WoW client."""
         if wow_path:
             if os.path.exists(os.path.join(wow_path, "Wow.exe")):
+                return True
+
+            # Custom 1.12 clients (benilla / Everwood, Turtle launchers) ship no Wow.exe: accept any client
+            # folder whose Data\ holds MPQ archives.
+            data_dir = os.path.join(wow_path, "Data")
+            if os.path.isdir(data_dir) and any(f.lower().endswith('.mpq') for f in os.listdir(data_dir)):
                 return True
 
             if os.path.exists(os.path.join(os.path.join(wow_path, "_retail_"), "WoW.exe")):
