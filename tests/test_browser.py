@@ -212,7 +212,7 @@ def body(T):
         st.active = i
         for slot in st.slots:
             if slot.ttype == 2:
-                cands = [x for x in (MB.CANDIDATES.get((st.current, slot.index)) or []) if x[1].startswith('Item ')]
+                cands = [x for x in (MB.CANDIDATES.get((st.current, slot.index)) or []) if x[2].startswith('ItemDisplayInfo')]
                 if cands:
                     found = (st.current, slot, cands)
                     break

@@ -616,12 +616,15 @@ def _item_skins(game_data, path):
                     by_model.setdefault(os.path.splitext(os.path.basename(mn))[0], []).append((r['id'], r['texs'][k]))
         DBC['_item_by_model'] = by_model
     stem = os.path.splitext(os.path.basename(_norm(path)))[0].lower()
+    rows = by_model.get(stem)
+    if not rows:                     # helms / shoulders: the file is Helm_X_HuM.m2, the DBC names Helm_X.mdx
+        rows = by_model.get(_strip_race_suffix(stem), [])
     out, seen = [], set()
-    for did, tex in by_model.get(stem, []):
+    for did, tex in rows:
         p = _dirname(path) + '\\' + (tex if tex.lower().endswith('.blp') else tex + '.blp')
         if p.lower() not in seen:
             seen.add(p.lower())
-            out.append((p, 'Item %d: %s' % (did, tex), 'ItemDisplayInfo %d' % did))
+            out.append((p, '%s  (item %d)' % (tex, did), 'ItemDisplayInfo %d' % did))
         if len(out) >= 300:
             break
     return out
@@ -656,20 +659,111 @@ def build_candidates(game_data, path, mesh):
             items.extend(_creature_skins(game_data, path, t))
         elif t == 2:
             items.extend(_item_skins(game_data, path))
-        PRIMARY[(path, slot['index'])] = len(items)
-        have = {i[0].lower() for i in items}
-        items.extend(x for x in folder if x[0].lower() not in have)
         uniq, seen = [], set()
         for it in items:
             if it[0].lower() not in seen:
                 seen.add(it[0].lower())
                 uniq.append(it)
-        CANDIDATES[(path, slot['index'])] = [('NONE', '(none)', 'No texture')] + uniq
+        key = (path, slot['index'])
+        PRIMARY[key] = len(uniq)
+        # same name family as the model (Helm_Plate_A_01*): recolours no DBC row uses
+        fam = _family_prefix(path)
+        family = [(p, n + '  (similar)', d) for p, n, d in folder
+                  if fam and p.lower() not in seen and n.lower().startswith(fam)]
+        seen.update(x[0].lower() for x in family)
+        FAMILY[key] = len(family)
+        rest = [x for x in folder if x[0].lower() not in seen]
+        CANDIDATES[key] = [('NONE', '(none)', 'No texture')] + uniq + family + rest
+        EXTRA.pop(key, None)
+        ENUM_CACHE.pop(key, None)
+
+
+FAMILY = {}          # (model path, slot index) -> how many "Similar:" candidates follow the PRIMARY ones
+EXTRA = {}           # (model path, slot index) -> paths picked from "Search all" (kept in the short list)
+ENUM_CACHE = {}      # (model path, slot index) -> enum items handed to Blender (must stay alive)
+THUMBS = None        # bpy.utils.previews collection of texture thumbnails
+THUMB_IDS = {}       # blp path lower -> icon id (0 = could not decode)
+SHORT_LIMIT = 60     # dropdown shows at most this many when nothing ranks (small folders show everything)
+
+
+def _strip_race_suffix(stem):
+    """'Helm_Plate_A_01Crimson_HuM' -> 'Helm_Plate_A_01Crimson' (helm files carry race+sex, the DBC does not)."""
+    import re
+    return re.sub(r'_[A-Za-z]{2}[MFmf]$', '', stem)
+
+
+def _family_prefix(path):
+    """'Item\\..\\Helm_Plate_A_01Crimson_HuM.m2' -> 'helm_plate_a_01' (name up to its last number); '' if too vague."""
+    import re
+    stem = _strip_race_suffix(os.path.splitext(os.path.basename(_norm(path)))[0])
+    m = re.match(r'^(.*\d)', stem)
+    fam = (m.group(1) if m else stem).lower()
+    return fam if len(fam) >= 5 else ''
+
+
+def short_candidates(path, index):
+    """What the dropdown and the arrows offer: (none) + DBC-paired + same family (+ anything picked via search).
+    Folders where nothing ranks show their first SHORT_LIMIT files."""
+    full = CANDIDATES.get((path, index)) or [('NONE', '(none)', '')]
+    n = 1 + PRIMARY.get((path, index), 0) + FAMILY.get((path, index), 0)
+    short = full[:n] if n > 1 else full[:SHORT_LIMIT + 1]
+    extra = EXTRA.get((path, index))
+    if extra:
+        have = {x[0] for x in short}
+        short = short + [x for x in full if x[0] in extra and x[0] not in have]
+    return short
+
+
+def _thumb_icon(path):
+    t = THUMB_IDS.get(path.lower())
+    return t if t else 'IMAGE_DATA'
+
+
+def make_thumbs(paths, limit=40):
+    """Decode a small mip of each texture into a preview icon (cached). Cheap: 64px mips, at most `limit` new."""
+    global THUMBS
+    import numpy as np
+    if THUMBS is None:
+        THUMBS = bpy.utils.previews.new()
+    game_data = None
+    made = 0
+    for p in paths:
+        if not p or p == 'NONE' or p.lower() in THUMB_IDS:
+            continue
+        if made >= limit:
+            break
+        made += 1
+        THUMB_IDS[p.lower()] = 0
+        try:
+            game_data = game_data or load_game_data()
+            data = _read(game_data, p)
+            img = blp_decode.decode(data, 64) if data else None
+            if img is None:
+                continue
+            h, w = img.shape[:2]
+            px = img[::-1].astype(np.float32) / 255.0                  # previews are bottom-up
+            if px.shape[2] == 4:
+                px[..., 3] = 1.0                                         # skins keep alpha masks; show colour
+            pv = THUMBS.new(p.lower())
+            pv.image_size = (w, h)
+            pv.image_pixels_float[:] = px.ravel()
+            THUMB_IDS[p.lower()] = pv.icon_id
+        except Exception as e:
+            print('WBS browser: no thumbnail for %s: %s' % (p, e))
 
 
 def _slot_items(self, context):
     st = context.window_manager.wbs_browser if context else bpy.context.window_manager.wbs_browser
-    items = CANDIDATES.get((st.current, self.index)) or [('NONE', '(none)', '')]
+    key = (st.current, self.index)
+    full = CANDIDATES.get(key) or [('NONE', '(none)', '')]
+    num = {x[0]: i for i, x in enumerate(full)}
+    short = short_candidates(st.current, self.index)
+    sig = (len(full), tuple(x[0] for x in short), tuple(THUMB_IDS.get(x[0].lower(), 0) for x in short))
+    cached = ENUM_CACHE.get(key)
+    if cached and cached[0] == sig:
+        return cached[1]
+    items = [(x[0], x[1], x[2], _thumb_icon(x[0]) if x[0] != 'NONE' else 'BLANK1', num[x[0]]) for x in short]
+    ENUM_CACHE[key] = (sig, items)
     return items
 
 
@@ -780,6 +874,7 @@ def _fill_slots(st, path, mesh):
             it.index, it.ttype = slot['index'], slot['type']
             it.label = TEXTURE_TYPE_NAMES.get(slot['type'], 'Type %d' % slot['type'])
             items = CANDIDATES.get((path, slot['index'])) or []
+            make_thumbs([x[0] for x in short_candidates(path, slot['index'])])
             if PRIMARY.get((path, slot['index'])) and len(items) > 1:
                 it.choice = items[1][0]                               # the model's own / first DBC texture
         for gid in mesh.geosets:
@@ -1081,6 +1176,85 @@ class WBS_OT_browser_favourite(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def step_texture(slot_pos, step):
+    """Move a texture slot to the previous / next entry of its short list (skips '(none)'). Returns the new path."""
+    st = bpy.context.window_manager.wbs_browser
+    if not (0 <= slot_pos < len(st.slots)):
+        return None
+    it = st.slots[slot_pos]
+    paths = [x[0] for x in short_candidates(st.current, it.index) if x[0] != 'NONE']
+    if not paths:
+        return None
+    i = paths.index(it.choice) if it.choice in paths else (-1 if step > 0 else 0)
+    it.choice = paths[(i + step) % len(paths)]
+    return it.choice
+
+
+def pick_texture(slot_pos, path):
+    """Use any candidate of the slot (from 'Search all'); it stays in the short list afterwards."""
+    st = bpy.context.window_manager.wbs_browser
+    if not (0 <= slot_pos < len(st.slots)):
+        return False
+    it = st.slots[slot_pos]
+    key = (st.current, it.index)
+    if path not in {x[0] for x in CANDIDATES.get(key, [])}:
+        return False
+    if path not in {x[0] for x in short_candidates(*key)}:
+        EXTRA.setdefault(key, []).append(path)
+        make_thumbs([path])
+    it.choice = path
+    return True
+
+
+class WBS_OT_browser_tex_step(bpy.types.Operator):
+    bl_idname = 'wbs.browser_tex_step'
+    bl_label = 'Previous / Next Texture'
+    bl_description = 'Show the previous / next texture of the short list (textures items use, then similar names)'
+    bl_options = {'INTERNAL'}
+    slot: bpy.props.IntProperty()
+    step: bpy.props.IntProperty(default=1)
+
+    def execute(self, context):
+        step_texture(self.slot, self.step)
+        return {'FINISHED'}
+
+
+def _search_items(self, context):
+    st = context.window_manager.wbs_browser
+    if not (0 <= self.slot < len(st.slots)):
+        return [('NONE', '(none)', '')]
+    key = (st.current, st.slots[self.slot].index)
+    cached = ENUM_CACHE.get(('search',) + key)
+    if cached is None:
+        full = CANDIDATES.get(key) or [('NONE', '(none)', '')]
+        cached = [(x[0], x[1], x[2], _thumb_icon(x[0]) if x[0] != 'NONE' else 'BLANK1', i)
+                  for i, x in enumerate(full)]
+        ENUM_CACHE[('search',) + key] = cached
+    return cached
+
+
+class WBS_OT_browser_tex_search(bpy.types.Operator):
+    bl_idname = 'wbs.browser_tex_search'
+    bl_label = 'Search All Textures'
+    bl_description = 'Type to search every texture of this slot (DBC-paired first, then similar names, then the folder)'
+    bl_options = {'INTERNAL'}
+    bl_property = 'texture'
+    slot: bpy.props.IntProperty()
+    texture: bpy.props.EnumProperty(name='Texture', items=_search_items)
+
+    def invoke(self, context, event):
+        ENUM_CACHE.pop(('search', context.window_manager.wbs_browser.current,
+                        context.window_manager.wbs_browser.slots[self.slot].index)
+                       if 0 <= self.slot < len(context.window_manager.wbs_browser.slots) else None, None)
+        context.window_manager.invoke_search_popup(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        if not pick_texture(self.slot, self.texture):
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
 def apply_textures(context):
     """Point the scene M2's slot images at the chosen textures. Returns the number of images changed."""
     st = context.window_manager.wbs_browser
@@ -1302,15 +1476,41 @@ class WBS_PT_model_browser(bpy.types.Panel):
         if len(st.slots):
             tbox = layout.box()
             tbox.label(text='Textures', icon='TEXTURE')
-            for it in st.slots:
+            for pos, it in enumerate(st.slots):
                 col = tbox.column(align=True)
                 if it.ttype < 0:
                     items = CANDIDATES.get((st.current, it.index)) or []
                     col.label(text=it.label)
                     col.label(text=items[0][1] if items else '(none)', icon='IMAGE_DATA')
-                else:
-                    col.label(text='%d. %s' % (it.index, it.label))
-                    col.prop(it, 'choice', text='')
+                    continue
+                key = (st.current, it.index)
+                n_dbc, n_fam = PRIMARY.get(key, 0), FAMILY.get(key, 0)
+                n_all = max(0, len(CANDIDATES.get(key, [])) - 1)
+                col.label(text='%d. %s' % (it.index, it.label))
+                col.prop(it, 'choice', text='')
+                row = col.row(align=True)
+                op = row.operator(WBS_OT_browser_tex_step.bl_idname, text='', icon='TRIA_LEFT')
+                op.slot, op.step = pos, -1
+                op = row.operator(WBS_OT_browser_tex_step.bl_idname, text='', icon='TRIA_RIGHT')
+                op.slot, op.step = pos, 1
+                row.operator(WBS_OT_browser_tex_search.bl_idname, text='Search all (%d)' % n_all,
+                             icon='VIEWZOOM').slot = pos
+                parts = []
+                if n_dbc:
+                    parts.append('%d in game' % n_dbc)
+                if n_fam:
+                    parts.append('%d similar' % n_fam)
+                rest = n_all - n_dbc - n_fam
+                if rest > 0 and (n_dbc or n_fam):
+                    parts.append('%d more (search)' % rest)
+                elif rest > SHORT_LIMIT:
+                    parts.append('first %d of %d (search)' % (SHORT_LIMIT, rest))
+                elif rest > 0:
+                    parts.append('%d in folder' % rest)
+                if parts:
+                    sub = col.row()
+                    sub.scale_y = 0.7
+                    sub.label(text=', '.join(parts))
         row = layout.row(align=True)
         row.scale_y = 1.4
         row.operator(WBS_OT_browser_import.bl_idname, icon='IMPORT')
@@ -1332,6 +1532,12 @@ def unregister():
     if PREVIEWS is not None:
         bpy.utils.previews.remove(PREVIEWS)
         PREVIEWS = None
+    global THUMBS
+    if THUMBS is not None:
+        bpy.utils.previews.remove(THUMBS)
+        THUMBS = None
+    THUMB_IDS.clear()
+    ENUM_CACHE.clear()
     for _fn, mpq in (HD['archives'] or []):
         try:
             mpq.close()
