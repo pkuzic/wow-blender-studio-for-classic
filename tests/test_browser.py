@@ -264,9 +264,11 @@ def body(T):
     n1 = MB._load_texture(gd, sp, hd=True)
     T.check(n0 is not None and n1 is not None and n1.shape[0] > n0.shape[0],
             'HD ogress skin %s is larger: %s vs %s' % (sp, None if n1 is None else n1.shape[:2], None if n0 is None else n0.shape[:2]))
+    common.set_everwood_mode(True)                 # HD (Upscale) textures are an Everwood-mode feature
     st.use_hd = True
     T.check(st.preview_icon > 0, 'preview re-rendered with HD on (%d ms)' % st.render_ms)
     st.use_hd = False
+    common.set_everwood_mode(False)
 
     # ---------------------------------------------------------------- import through the browser
     if blue:

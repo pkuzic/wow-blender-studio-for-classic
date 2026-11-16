@@ -325,6 +325,14 @@ class WBS_AP_Preferences(bpy.types.AddonPreferences):
         default=''
     )
 
+    everwood_mode: bpy.props.BoolProperty(
+        name='Everwood mode',
+        description='Show the tools that only work with the Everwood client and its data: .emorph slider morphs '
+                    '(load / save as shape keys), HD (Data\\Upscale) preview textures, the Everwood client guard in '
+                    'Send to test client. Leave off for any other 1.12 client',
+        default=False
+    )
+
     def draw(self, context: bpy.types.Context):
         layout = self.layout
 
@@ -385,6 +393,17 @@ class WBS_AP_Preferences(bpy.types.AddonPreferences):
             col.label(text='M2 Quick Save Settings:', icon='SETTINGS')
             box = col.box()
             box.prop(proj_prefs, 'merge_vertices', text='Merge Vertices')
+
+        layout.separator()
+        col = layout.column(align=True)
+        col.label(text='Everwood:', icon='WORLD')
+        box = col.box()
+        box.prop(self, 'everwood_mode')
+        sub = box.column(align=True)
+        sub.enabled = self.everwood_mode
+        sub.label(text='Adds: .emorph slider morphs (WBS Character tab),')
+        sub.label(text='HD (Upscale) preview textures in the Model Browser,')
+        sub.label(text='the Everwood client guard in Send to test client.')
 
         layout.separator()
         from .updater import draw_prefs

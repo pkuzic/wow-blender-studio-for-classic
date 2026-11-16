@@ -183,8 +183,12 @@ def body(T):
 
     # ---- 8. operator + panel registered
     T.check(hasattr(bpy.ops.wbs, 'send_to_test_client'), 'wbs.send_to_test_client operator registered')
-    T.check(bpy.context.window_manager.wbs_deploy.protected_paths == 'benilla_deploy',
-            'protected-paths preference defaults to benilla_deploy')
+    wm = bpy.context.window_manager
+    T.check(wm.wbs_deploy.protected_paths == '', 'protected-paths field starts empty (no Everwood path shown to others)')
+    DP = common.module('ui.deploy_panel')
+    T.check('benilla_deploy' in DP.protected_list(wm), 'benilla_deploy is still always refused (hidden safety guard)')
+    wm.wbs_deploy.protected_paths = 'my_live_client'
+    T.check(set(DP.protected_list(wm)) == {'my_live_client', 'benilla_deploy'}, 'user fragments add to the guard')
 
 
 common.run(T, body)

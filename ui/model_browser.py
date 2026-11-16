@@ -37,7 +37,7 @@ import traceback
 import bpy
 import bpy.utils.previews
 
-from ..utils.misc import load_game_data
+from ..utils.misc import load_game_data, everwood_mode
 from ..utils import model_preview, blp_decode
 from ..pywowlib.archives.mpq import MPQFile
 from .preferences import get_project_preferences
@@ -686,7 +686,8 @@ def _load_texture(game_data, path, hd=None):
         return None
     if hd is None:
         try:
-            hd = bool(bpy.context.window_manager.wbs_browser.use_hd)
+            # Data\Upscale is the Everwood HD pack: only in Everwood mode (add-on preferences)
+            hd = bool(bpy.context.window_manager.wbs_browser.use_hd) and everwood_mode()
         except Exception:
             hd = False
     key = (path.lower(), bool(hd))
@@ -1278,10 +1279,11 @@ class WBS_PT_model_browser(bpy.types.Panel):
         box.prop(st, 'pitch')
         for part in st.info.split(': ', 1) if st.info else []:
             box.label(text=part)
-        if hd_available():
-            box.prop(st, 'use_hd')
-        else:
-            box.label(text='No Data\\Upscale archives (HD off)', icon='INFO')
+        if everwood_mode():                          # Data\Upscale = the Everwood HD pack
+            if hd_available():
+                box.prop(st, 'use_hd')
+            else:
+                box.label(text='No Data\\Upscale archives (HD off)', icon='INFO')
 
         if HOLDERS:
             abox = layout.box()

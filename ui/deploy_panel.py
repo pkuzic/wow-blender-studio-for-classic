@@ -6,6 +6,7 @@ import bpy
 from bpy.props import StringProperty, PointerProperty
 
 from ..utils import client_deploy as cd
+from ..utils.misc import everwood_mode
 
 
 def release_game_data():
@@ -24,9 +25,8 @@ def release_game_data():
 class WBS_PG_deploy(bpy.types.PropertyGroup):
     protected_paths: StringProperty(
         name='Never deploy to paths containing',
-        description="Semicolon separated fragments. Archives whose full path contains one are never written "
-                    "(default protects the LIVE launcher client)",
-        default='benilla_deploy')
+        description="Semicolon separated fragments. Archives whose full path contains one are never written",
+        default='')
     backup_dir: StringProperty(
         name='MPQ backup folder', subtype='DIR_PATH',
         description="Archives are copied here before their first write in a Blender session. Must be outside the "
@@ -48,7 +48,10 @@ def _project():
 
 
 def protected_list(wm):
-    return tuple(p.strip() for p in wm.wbs_deploy.protected_paths.split(';') if p.strip())
+    # the Everwood LIVE launcher client (cd.DEFAULT_PROTECTED) is ALWAYS refused, whatever the field says and even
+    # outside Everwood mode - a safety guard that costs nothing elsewhere (no other client is called that)
+    user = tuple(p.strip() for p in wm.wbs_deploy.protected_paths.split(';') if p.strip())
+    return user + tuple(p for p in cd.DEFAULT_PROTECTED if p not in user)
 
 
 def backup_folder(wm):
@@ -208,6 +211,9 @@ class WBS_PT_send_to_test_client(bpy.types.Panel):
         col = layout.column()
         d = context.window_manager.wbs_deploy
         col.prop(d, 'protected_paths')
+        if everwood_mode():
+            col.label(text='Always protected: %s (Everwood LIVE client)' % ', '.join(cd.DEFAULT_PROTECTED),
+                      icon='LOCKED')
         col.prop(d, 'backup_dir')
         col.operator(WBS_OT_send_to_test_client.bl_idname, icon='EXPORT')
 

@@ -410,7 +410,7 @@ def _check_view(res, data, hdr, vi, base, verts, n_vert, n_pal, pal, tex_lookup,
         arrs[name] = (n, ofs)
     bone_count_max = struct.unpack_from('<I', data, base + 40)[0]
     if vi == 0 and bone_count_max != VANILLA_BONE_COUNT_MAX:      # LOD views carry 75/53/21
-        res.info(tag + "boneCountMax is %d; every stock 1.12 model uses %d (custom Everwood models use other values "
+        res.info(tag + "boneCountMax is %d; every stock 1.12 model uses %d (custom models may use other values "
                  "and work, so this is informational)." % (bone_count_max, VANILLA_BONE_COUNT_MAX))
 
     n_idx, o_idx = arrs['indices']

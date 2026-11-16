@@ -78,6 +78,11 @@ def enable_addon():
     return bpy.context.preferences.addons[ADDON].preferences
 
 
+def set_everwood_mode(on=True):
+    """Tick / untick 'Everwood mode' in the add-on preferences (gates .emorph, HD textures, ...)."""
+    bpy.context.preferences.addons[ADDON].preferences.everwood_mode = bool(on)
+
+
 def setup_project(client=None, version='0'):
     """Enable the add-on, create one project pointing at the client, cache in TMP. Returns project prefs."""
     prefs = enable_addon()

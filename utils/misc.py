@@ -102,6 +102,17 @@ def get_material_viewport_image(material):
     return None
 
 
+def everwood_mode() -> bool:
+    """True when 'Everwood mode' is ticked in the add-on preferences: shows the tools that only make sense with the
+    Everwood client and data (.emorph slider morphs, the Data\\Upscale HD texture pack, ...). Safe in draw/poll."""
+    try:
+        from ..config import ADDON_MODULE_NAME
+        addon = bpy.context.preferences.addons.get(ADDON_MODULE_NAME)
+        return bool(addon and getattr(addon.preferences, 'everwood_mode', False))
+    except Exception:
+        return False
+
+
 def get_project_preferences_or_none():
     """Project preferences for draw()/poll() code: None (instead of raising) when no project exists yet."""
     try:

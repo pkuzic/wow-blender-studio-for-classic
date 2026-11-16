@@ -465,6 +465,15 @@ def _report(op, context, title, res):
         op.report({'WARNING'}, w)
 
 
+def _everwood_only(cls):
+    """.emorph is the Everwood client's slider format: only offered in Everwood mode (add-on preferences)."""
+    from ..utils.misc import everwood_mode
+    if everwood_mode():
+        return True
+    cls.poll_message_set('Everwood only: tick "Everwood mode" in the add-on preferences')
+    return False
+
+
 class WBS_OT_emorph_load(bpy.types.Operator, ImportHelper):
     """Load a .emorph file as shape keys on the imported M2 meshes"""
     bl_idname = 'wbs.emorph_load'
@@ -472,6 +481,10 @@ class WBS_OT_emorph_load(bpy.types.Operator, ImportHelper):
     filename_ext = '.emorph'
     filter_glob: StringProperty(default='*.emorph', options={'HIDDEN'})
     only_selected: BoolProperty(name='Selected meshes only', default=False)
+
+    @classmethod
+    def poll(cls, context):
+        return _everwood_only(cls)
 
     def execute(self, context):
         res = load_emorph(find_meshes(context, self.only_selected), self.filepath)
@@ -491,6 +504,10 @@ class WBS_OT_emorph_save(bpy.types.Operator, ExportHelper):
     only_selected: BoolProperty(name='Selected meshes only', default=False)
     default_cat: IntProperty(name='Category of new keys', default=0, min=0, max=4,
                              description='0 General, 1 Face, 2 Upper body, 3 Midsection, 4 Lower body')
+
+    @classmethod
+    def poll(cls, context):
+        return _everwood_only(cls)
 
     def execute(self, context):
         res = save_emorph(find_meshes(context, self.only_selected), self.filepath, self.default_cat)
