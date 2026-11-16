@@ -2,7 +2,7 @@ import bpy
 from ..enums import *
 
 class TexturePathDefaultButton(bpy.types.Operator):
-    bl_idname = "wow_m2_texture.set_default_texture"
+    bl_idname = "wow_m2_particle.set_default_texture_path"
     bl_label = "Set Default Texture Path"
 
     def execute(self, context):

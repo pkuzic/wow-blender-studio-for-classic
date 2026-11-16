@@ -1,5 +1,6 @@
 import bpy
 from ..ui.preferences import get_project_preferences
+from ..utils.misc import get_project_preferences_or_none
 from .. import ui_icons
 from ..utils.callbacks import on_release
 from ..utils.custom_object import CustomObject
@@ -253,7 +254,7 @@ def render_top_bar(self, context):
 
     doodadset_mode = context.scene.wow_scene.doodadset_mode
 
-    if proj_prefs := get_project_preferences():
+    if proj_prefs := get_project_preferences_or_none():
        row.prop(proj_prefs, 'export_method_enum', text='Export Folder', icon='FILE_TICK')
 
     if context.scene.wow_scene.type == 'WMO':

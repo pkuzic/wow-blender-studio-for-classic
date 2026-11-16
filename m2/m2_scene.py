@@ -1010,6 +1010,15 @@ class BlenderM2Scene:
             for poly in mesh.polygons:
                 poly.use_smooth = True
 
+            # MONKEY (safe export): vertex identity. wbs_m2_vid = the ORIGINAL M2 vertex index of every Blender
+            # vertex (m2/safe_export.py + m2/emorph_io.py key on it); wbs_m2_ok = 1 on imported vertices (new
+            # vertices get 0 from Blender, so they are told apart from vertex 0).
+            _vids = [skin.vertex_indices[i] for i in range(smesh.vertex_start, smesh.vertex_start + smesh.vertex_count)]
+            _a = mesh.attributes.new('wbs_m2_vid', 'INT', 'POINT')
+            _a.data.foreach_set('value', _vids)
+            _a = mesh.attributes.new('wbs_m2_ok', 'INT', 'POINT')
+            _a.data.foreach_set('value', [1] * len(_vids))
+
             # set normals
             #for index, vertex in enumerate(mesh.vertices):
                 #vertex.normal = normals[index]
@@ -1078,6 +1087,12 @@ class BlenderM2Scene:
                         grp = obj.vertex_groups.new(name=name)
                         for (v, w) in vgroups[name]:
                             grp.add([v], w, 'ADD')
+
+            # MONKEY (safe export): where the original bytes come from
+            obj['wbs_m2_game_path'] = bpy.context.scene.wow_scene.game_path
+            obj['wbs_m2_local_path'] = getattr(self.m2.root, 'filepath', '') or ''
+            obj['wbs_m2_nverts'] = len(self.m2.root.vertices)
+            obj['wbs_m2_version'] = int(getattr(self.m2.root, 'version', 0) or 0)
 
             self.geosets.append(obj)
             

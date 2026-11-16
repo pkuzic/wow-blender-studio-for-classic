@@ -10,6 +10,7 @@ from ..wmo.export_wmo import export_wmo_from_blender_scene
 from ..wmo.classic_lint import ClassicLint, ClassicLintError
 from ..m2.import_m2 import import_m2
 from ..m2.export_m2 import export_m2, create_m2
+from ..m2.classic_lint_m2 import lint_after_export as lint_m2_after_export
 from ..utils.misc import load_game_data
 from ..utils.collections import get_current_wow_model_collection, SpecialCollection                                                                                   
 from ..ui.preferences import get_project_preferences
@@ -147,6 +148,7 @@ class WBS_OT_save_current_m2(bpy.types.Operator):
 
             print("Saving M2 to : " + filepath)
             export_m2(version, filepath, selected_only = False, fill_textures = True, forward_axis = 'X+', scale = 1.0, merge_vertices = True)
+            lint_m2_after_export(self, filepath, version)
             return {'FINISHED'}
 
         self.report({'ERROR'}, 'Invalid scene type.')
@@ -395,6 +397,7 @@ class WBS_OT_m2_export(bpy.types.Operator, ExportHelper):
         if context.scene:
             context.scene.wow_scene.type = 'M2'
             export_m2(int(context.scene.wow_scene.version), self.filepath, self.export_selected, self.autofill_textures, self.forward_axis, self.scale, self.merge_vertices)
+            lint_m2_after_export(self, self.filepath, int(context.scene.wow_scene.version))
             return {'FINISHED'}
 
         self.report({'ERROR'}, 'Invalid scene type.')

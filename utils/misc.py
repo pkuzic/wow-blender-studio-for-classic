@@ -102,6 +102,14 @@ def get_material_viewport_image(material):
     return None
 
 
+def get_project_preferences_or_none():
+    """Project preferences for draw()/poll() code: None (instead of raising) when no project exists yet."""
+    try:
+        return get_project_preferences()
+    except UserWarning:
+        return None
+
+
 def load_game_data() -> WoWFileData:
 
     WoWVersionManager().set_client_version(int(bpy.context.scene.wow_scene.version))

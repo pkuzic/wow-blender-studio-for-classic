@@ -1,5 +1,6 @@
 import bpy
 from ....ui.preferences import get_project_preferences
+from ....utils.misc import get_project_preferences_or_none
 from ..enums import *
 
 
@@ -94,7 +95,7 @@ class M2_PT_tools_panel_object_mode_add_to_scene(bpy.types.Panel):
             icon_value=ui_icons['WOW_STUDIO_DOODADS_ADD']) 
         
         
-        if proj_prefs := get_project_preferences():
+        if proj_prefs := get_project_preferences_or_none():
             col1_row1.prop(proj_prefs, 'import_method', text='')
 
         col1_row2.operator("scene.m2_add_attachment", text='Attachment', icon='POSE_HLT')

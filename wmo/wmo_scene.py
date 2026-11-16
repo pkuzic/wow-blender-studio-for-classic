@@ -262,7 +262,9 @@ class BlenderWMOScene:
         with tqdm(self.wmo.modd.definitions, desc='Importing doodads', ascii=True) as progress:
             for doodad_set in self.wmo.mods.sets:
                 # replace anchor object by collections
-                doodadset_coll = bpy.data.collections.get(doodad_set.name)
+                # Everwood Classic fork: look only among THIS import's doodad collections - a same-named set left by an
+                # earlier import in another scene was reused but never linked here ("ViewLayer does not contain object")
+                doodadset_coll = doodad_collection.children.get(doodad_set.name)
                 if not doodadset_coll:
                     doodadset_coll = bpy.data.collections.new(doodad_set.name)
                     doodad_collection.children.link(doodadset_coll)
@@ -608,7 +610,12 @@ class BlenderWMOScene:
         if len(self.bl_doodad_sets):
 
             for set_name, doodads in tqdm(self.bl_doodad_sets.items(), desc='Saving doodad sets', ascii=True):
-                
+
+                # Blender suffixes duplicate collection names ("Set_Furniture.001" when another scene already has one);
+                # the file must carry the real set name
+                if len(set_name) > 4 and set_name[-4] == '.' and set_name[-3:].isdigit():
+                    set_name = set_name[:-4]
+
                 if set_name.startswith("Set_$DefaultGlobal"):
                     if not has_global:
                         set_name = "Set_$DefaultGlobal"

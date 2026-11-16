@@ -1,5 +1,6 @@
 import os
 import struct
+import tempfile
 import time
 
 import bpy
@@ -17,6 +18,68 @@ def _remove_quietly(path):
     except OSError:
         pass
 
+def _find_loose_texture(local_dir, name, cache_dir):
+    """Path of an existing .png/.blp for the texture `name` (a WoW path) near the model, or None."""
+    rel = name.replace('\\', os.sep).replace('/', os.sep)
+    stem_rel = os.path.splitext(rel)[0]
+    stem_base = os.path.basename(stem_rel)
+    roots = [(local_dir, stem_rel), (local_dir, stem_base)]
+    if cache_dir:
+        roots.append((cache_dir, stem_rel))
+    for root, stem in roots:
+        for ext in ('.png', '.blp', '.PNG', '.BLP'):
+            cand = os.path.join(root, stem + ext)
+            if os.path.isfile(cand):
+                return cand
+    return None
+
+
+def _blp_to_png(blp_path, out_dir):
+    """Decode a BLP2 with the add-on's decoder and save it as PNG into out_dir. Returns the png path or None."""
+    try:
+        from ..utils import blp_decode
+        with open(blp_path, 'rb') as f:
+            rgba = blp_decode.decode(f.read(), 4096)
+        h, w = rgba.shape[0], rgba.shape[1]
+        os.makedirs(out_dir, exist_ok=True)
+        png = os.path.join(out_dir, os.path.splitext(os.path.basename(blp_path))[0] + '.png')
+        img = bpy.data.images.new('_wbs_blp_tmp', w, h, alpha=True)
+        try:
+            # BLP rows are top-down, Blender's are bottom-up
+            img.pixels.foreach_set((rgba[::-1].astype('float32') / 255.0).ravel())
+            img.filepath_raw = png
+            img.file_format = 'PNG'
+            img.save()
+        finally:
+            bpy.data.images.remove(img)
+        return png
+    except Exception as e:
+        print("\nWarning: could not convert \"{}\" ({}): using a placeholder image.".format(blp_path, e))
+        return None
+
+
+def _local_texture_map(local_dir, textures, cache_dir):
+    """Texture name -> '<something>.blp' path whose .png sibling exists (what the scene builder expects).
+    Textures that cannot be found are left out: the scene builder then makes a placeholder image named after them."""
+    result = {}
+    out_dir = cache_dir if cache_dir else os.path.join(tempfile.gettempdir(), 'wbs_textures')
+    for name in textures:
+        if not isinstance(name, str) or not name:
+            continue
+        found = _find_loose_texture(local_dir, name, cache_dir)
+        if not found:
+            continue
+        stem = os.path.splitext(found)[0]
+        if found.lower().endswith('.blp'):
+            if os.path.isfile(stem + '.png'):
+                result[name] = stem + '.blp'
+                continue
+            png = _blp_to_png(found, out_dir)
+            if png:
+                result[name] = os.path.splitext(png)[0] + '.blp'
+            continue
+        result[name] = stem + '.blp'
+    return result
 
 def import_m2(version, filepath, is_local_file, time_import_method):
 
@@ -89,8 +152,26 @@ def import_m2(version, filepath, is_local_file, time_import_method):
             game_data.extract_files(extract_dir, dependencies.bones, 'bone', True)
             game_data.extract_files(extract_dir, dependencies.lod_skins, 'skin', True)
         
+    elif is_local_file:
+        # No WoW client: everything comes from the folder the .m2 lives in (no archives, no DBC).
+        print("\nNo WoW client loaded - importing the loose .m2 with the files next to it.")
+        dependencies = m2_file.find_model_dependencies()
+        local_dir = os.path.dirname(os.path.abspath(filepath))
+
+        m2_file.texture_path_map = _local_texture_map(local_dir, dependencies.textures,
+                                                      project_preferences.cache_dir_path)
+
+        anim_filepaths = {}
+        for key, identifier in dependencies.anims.items():
+            anim_filepaths[key] = os.path.join(local_dir, os.path.split(identifier)[-1])
+
+        # <= TBC: skins are embedded in the .m2; WotLK (v264): <stem>NN.skin next to the file
+        skin_filepaths = [os.path.join(local_dir, os.path.split(s)[-1]) for s in dependencies.skins
+                          if isinstance(s, str)]
+
     else:
-        raise NotImplementedError('Error: Importing without gamedata loaded is not yet implemented.')
+        raise FileNotFoundError('Error: the WoW client is not loaded (set the WoW path of the project in the '
+                                'add-on preferences) - cannot import a model from the game archives.')
 
     m2_file.read_additional_files(skin_filepaths, anim_filepaths)
     m2_file.root.assign_bone_names()
@@ -143,7 +224,7 @@ def import_m2(version, filepath, is_local_file, time_import_method):
     bl_m2.load_particles(time_import_method)
     bl_m2.load_globalflags()
 
-    if dbc_textures:
+    if dbc_textures and game_data and game_data.files:
         bpy.ops.scene.wow_creature_load_textures(LoadAll=True) 
 
     print("\nDone importing M2. \nTotal import time: ",

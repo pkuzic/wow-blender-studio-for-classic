@@ -3,7 +3,7 @@ from ..enums import *
 from ...bl_render.cycles import update_m2_mat_node_tree_cycles
     
 class TexturePathDefaultButton(bpy.types.Operator):
-    bl_idname = "wow_m2_texture.set_default_texture"
+    bl_idname = "wow_m2_material.set_default_texture_path"
     bl_label = "Set Default Texture Path"
 
     texture_index: bpy.props.IntProperty()
@@ -736,9 +736,7 @@ def menu_func(self, context):
     self.layout.operator(M2_OT_add_texture_transform.bl_idname)    
         
 def register():
-    bpy.utils.register_class(TexturePathDefaultButton)
     bpy.types.Material.wow_m2_material = bpy.props.PointerProperty(type=WowM2MaterialPropertyGroup)
 
 def unregister():
-    bpy.utils.unregister_class(TexturePathDefaultButton)
     del bpy.types.Material.wow_m2_material

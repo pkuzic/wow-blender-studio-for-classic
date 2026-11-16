@@ -17,6 +17,8 @@ __all__ = (
 MODULES_TO_IGNORE = (
     "third_party",
     "test",
+    "tests",
+    "tools",
     "developer_utils",
     "pywowlib",
     "wbs_kernel",
@@ -48,14 +50,26 @@ def register():
 
 
 def unregister():
+    # One failing unregister must not leave the rest registered (a half-unregistered add-on re-registers wrongly,
+    # e.g. the custom-object poll hooks would then wrap themselves and recurse forever): carry on, report at the end.
+    errors = []
     for cls in reversed(ordered_classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception as e:
+            errors.append("unregister_class(%s): %s" % (cls.__name__, e))
 
     for module in modules:
         if module.__name__ == __name__:
             continue
         if hasattr(module, "unregister"):
-            module.unregister()
+            try:
+                module.unregister()
+            except Exception as e:
+                errors.append("%s.unregister(): %s" % (module.__name__, e))
+
+    if errors:
+        raise RuntimeError("unregister problems:\n  " + "\n  ".join(errors))
 
 
 # Import modules

@@ -1,5 +1,6 @@
 import bpy
 from ....ui.preferences import get_project_preferences
+from ....utils.misc import get_project_preferences_or_none
 from ..enums import *
 
 from .common import panel_poll
@@ -162,7 +163,7 @@ class WMO_PT_tools_panel_object_mode_add_to_scene(bpy.types.Panel):
             col1_row5 = col1_col.row(align=True)
             col.separator()
 
-            if proj_prefs := get_project_preferences():
+            if proj_prefs := get_project_preferences_or_none():
                 col1_row0.prop(proj_prefs, 'import_method', text='')                  
                 if proj_prefs.import_method == 'DirectPath':
                     box = col1_row1.box()
@@ -189,7 +190,7 @@ class WMO_PT_tools_panel_object_mode_add_to_scene(bpy.types.Panel):
             col.separator()
 
 
-            if proj_prefs := get_project_preferences():
+            if proj_prefs := get_project_preferences_or_none():
                 col1_row0.prop(proj_prefs, 'import_method', text='')                  
 
             col1_row2.operator("scene.wow_wmo_import_doodad_from_wmv", text='M2',

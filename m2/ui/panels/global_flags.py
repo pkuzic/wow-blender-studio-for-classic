@@ -55,5 +55,5 @@ def register():
 
 
 def unregister():
-    del bpy.Object.wow_m2_globalflags
+    del bpy.types.Object.wow_m2_globalflags
 
