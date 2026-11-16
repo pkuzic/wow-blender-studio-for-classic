@@ -15,6 +15,7 @@
 # user clicks. Nothing about the user or the machine is sent beyond a generic User-Agent.
 
 import os
+import re
 import sys
 import json
 import time
@@ -55,6 +56,15 @@ def is_git_checkout():
 
 
 def current_version():
+    """Version from __init__.py ON DISK: right after a staged update is applied, the already-imported __init__
+    module (and its bl_info) is still the old one for this session, but this module is loaded after the swap."""
+    try:
+        with open(os.path.join(addon_dir(), '__init__.py'), 'r', encoding='utf-8') as f:
+            m = re.search(r'"version"\s*:\s*\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)', f.read())
+        if m:
+            return tuple(int(x) for x in m.groups())
+    except OSError:
+        pass
     mod = sys.modules.get(ADDON_MODULE_NAME)
     return tuple(getattr(mod, 'bl_info', {}).get('version', (0, 0, 0)))
 

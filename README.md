@@ -16,6 +16,16 @@ A fork of WoW Blender Studio (`io_scene_wmo`) targeting the **vanilla 1.12 / Tur
 | **MOGI normalized** to the stock 1.12 subset (only the Indoor/Outdoor bit), like every Blizzard WMO | **MOGI нормализуется** до стокового вида 1.12 (только бит Indoor/Outdoor), как во всех WMO Blizzard |
 | **Export lint for 1.12** (`wmo/classic_lint.py`): aborts/warns on portal mistakes before the file is written (see below) | **Линт экспорта под 1.12** (`wmo/classic_lint.py`): ошибки/предупреждения по порталам ДО записи файла (см. ниже) |
 
+## Model Browser / Браузер моделей
+
+| EN | RU |
+|---|---|
+| **3D View → Sidebar (N) → WBS Browser.** Click **Load Model List** once: every `.m2` and `.wmo` in the active project's client is listed (cached, instant next time). | **3D View → боковая панель (N) → WBS Browser.** Один раз нажмите **Load Model List**: появится список всех `.m2` и `.wmo` клиента активного проекта (кэшируется, в следующий раз мгновенно). |
+| **Search** by any part of the path (folder names too), filter **M2 / WMO**, and **Patch archives** (only custom content from `patch-*.mpq`) or **All archives**. The archive the game actually uses is shown next to each file. | **Поиск** по любой части пути (и по папкам), фильтр **M2 / WMO** и **Patch archives** (только своё содержимое из `patch-*.mpq`) или **All archives**. Рядом с файлом показан архив, из которого его берёт игра. |
+| **Preview**: the selected model is rendered with its textures right in the panel; turn it with the arrows / *Turn* / *Tilt*. | **Превью**: выбранная модель рисуется с текстурами прямо в панели; вращение стрелками / *Turn* / *Tilt*. |
+| **Textures**: each texture slot gets a list: character **skins and hair** (CharSections), **creature skins** (CreatureDisplayInfo), and every `.blp` in the model's folder. The preview follows your choice. | **Текстуры**: у каждого слота свой список: **скины и волосы** персонажей (CharSections), **скины существ** (CreatureDisplayInfo) и все `.blp` из папки модели. Превью сразу показывает выбор. |
+| **Import** brings the model into the scene with the chosen textures; **Apply Textures** swaps them on the M2 already in the scene. | **Import** загружает модель в сцену с выбранными текстурами; **Apply Textures** меняет текстуры у M2, уже стоящей в сцене. |
+
 ## Updates / Обновления
 
 | EN | RU |

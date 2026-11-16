@@ -10,6 +10,14 @@ from ..pywowlib.m2_file import M2File, M2Versions
 from ..ui.preferences import get_project_preferences
 
 
+def _remove_quietly(path):
+    # cache cleanup only: a file that was never extracted (e.g. an .anim missing from the archives) is fine
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def import_m2(version, filepath, is_local_file, time_import_method):
 
     start_time = time.time()
@@ -89,7 +97,7 @@ def import_m2(version, filepath, is_local_file, time_import_method):
 
     if not is_local_file:
         for key, identifier in dependencies.anims.items():
-            os.remove(os.path.join(extract_dir, identifier))
+            _remove_quietly(os.path.join(extract_dir, identifier))
 
     print("\n\n### Importing M2 model ###")
 
@@ -174,8 +182,12 @@ def import_m2_gamedata(version, filepath, is_local_file):
         root_path = os.path.join(cache_dir, filepath)
 
     with open(root_path, 'rb') as f:
+        f.seek(4)
+        m2_version = struct.unpack('I', f.read(4))[0]
         f.seek(68)
         n_skins = struct.unpack('I', f.read(4))[0]
+    if m2_version < 264:
+        n_skins = 0     # <= TBC: skin profiles are embedded in the .m2 (and 0x44 is the vertex array there)
 
     skin_paths = ["{}{}.skin".format(filepath[:-3], str(i).zfill(2)) for i in range(n_skins)]
     game_data.extract_files(cache_dir, skin_paths)
@@ -183,6 +195,6 @@ def import_m2_gamedata(version, filepath, is_local_file):
     import_m2(version, root_path, is_local_file, time_import_method)    
 
     # clean up unnecessary files and directories
-    os.remove(root_path)
+    _remove_quietly(root_path)
     for skin_path in skin_paths:
-        os.remove(os.path.join(cache_dir, *skin_path.split('\\')))
+        _remove_quietly(os.path.join(cache_dir, *skin_path.split('\\')))
